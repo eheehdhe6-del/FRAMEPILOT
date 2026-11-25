@@ -1,0 +1,1442 @@
+FRAMEPILOT — COMPLETE PRODUCT REDESIGN AND REBUILD
+
+Project: A beginner-friendly mobile drawing and animation direction studio for AI-assisted video production
+
+I want you to rebuild FramePilot as a substantially better Android application.
+
+This is not a request to make the existing interface prettier, change a few colors, or add more buttons.
+
+I want you to reconsider the entire user experience, information architecture, drawing workflow, animation workflow, underlying data model, and export system.
+
+The objective is to create an application that feels as natural and inviting as a mobile drawing and animation app, while providing the creative control needed to plan complex motion graphics and communicate those instructions to AI coding agents such as OpenCode.
+
+The app must be easy enough for a complete beginner to use, but capable enough to support sophisticated animation projects.
+
+Do not sacrifice usability for technical sophistication.
+
+Do not sacrifice creative freedom for simplicity.
+
+The complexity should be available when needed, not permanently displayed.
+
+
+---
+
+PART 1 — UNDERSTAND THE PRODUCT
+
+1. What FramePilot is supposed to do
+
+FramePilot is a visual authoring and animation-direction application.
+
+Its primary purpose is to let me:
+
+1. Draw characters, objects, environments, backgrounds, props, shapes and visual compositions.
+2. Create rough sketches, including extremely simple stick figures.
+3. Organize drawings using layers.
+4. Create frame-by-frame animation.
+5. Direct the movement of characters and individual objects.
+6. Create complex motion graphics, including paths, shape transformations, kinetic typography, particles and camera movements.
+7. Describe everything in natural language so AI models can understand my intentions.
+8. Export a complete, structured production package that text-only AI coding models can understand without relying on image or vision capabilities.
+
+The application is not primarily intended to render the finished video.
+
+It should make it easy for me to communicate exactly what I imagine, then provide OpenCode with enough structured information to implement the actual animation.
+
+2. My intended users and experience
+
+Design this for someone who:
+
+- Is not a professional animator.
+- May not understand traditional animation terminology.
+- Wants to draw freely and experiment.
+- May only know how to draw basic shapes or stick figures.
+- Wants to create Instagram Reels, Shorts, motion graphics and animated scenes.
+- Wants creative freedom without having to learn complicated software first.
+- Uses AI coding models to implement the final animation.
+- Needs those models to understand visual instructions even when they cannot interpret images.
+
+I should not need to understand skeleton rigs, interpolation, easing curves, coordinate systems or keyframe terminology before I can create my first animation.
+
+Introduce these concepts gradually through simple actions.
+
+
+---
+
+PART 2 — START THE DESIGN FROM SCRATCH
+
+3. Visual design direction
+
+The current design feels too much like a technical dashboard.
+
+I want a fresh visual identity.
+
+Use common interaction conventions from applications such as:
+
+- FlipaClip
+- ibis Paint X
+- Clip Studio Paint
+- Other established mobile drawing and animation applications
+
+Use these as usability references, not as instructions to copy their exact branding, assets or proprietary interface.
+
+The visual personality
+
+I want FramePilot to feel:
+
+- Creative.
+- Playful.
+- Friendly.
+- Inviting.
+- Colorful.
+- Intuitive.
+- Comfortable to explore.
+- Appropriate for artistic experimentation.
+
+Use a light, paper-first visual design.
+
+Suggested direction:
+
+- Warm white or cream canvas.
+- Pastel lavender.
+- Soft coral.
+- Mint.
+- Sky blue.
+- Butter yellow.
+- Other expressive creative colors.
+
+The interface should feel like an approachable digital art studio.
+
+Avoid making every button a giant outlined rectangle.
+
+Avoid excessive cards, borders, technical labels, explanations and permanent settings panels.
+
+Use visual hierarchy, compact toolbars, floating controls, contextual tool settings and drawers.
+
+The canvas must receive the majority of available screen space.
+
+Mobile-first requirements
+
+The application must be designed specifically for Android phones.
+
+Pay attention to:
+
+- Small screens.
+- Portrait and landscape orientation.
+- Reachability with one hand.
+- Thumb-friendly controls.
+- 48dp minimum interactive targets where practical.
+- Keyboard appearance.
+- System navigation bars.
+- Canvas dimensions.
+- Scroll behavior.
+- Nested panels.
+- Dialogs and bottom sheets.
+
+Do not simply shrink a desktop application to fit a phone.
+
+4. Design the workspace around the canvas
+
+The primary drawing workspace should contain:
+
+Top toolbar
+
+- Project name.
+- Undo.
+- Redo.
+- Save status.
+- Export.
+- More/settings.
+
+Main canvas
+
+- Largest practical screen area.
+- Clear drawing surface.
+- Zoom and pan.
+- Grid toggle.
+- Center/reset view.
+- Background and transparency controls where applicable.
+
+Floating or compact tool dock
+
+- Pen.
+- Brush.
+- Eraser.
+- Selection.
+- Shapes.
+- Text.
+- Fill.
+- Pan/hand.
+- More tools.
+
+Collapsible bottom workspace
+
+- Timeline.
+- Frame thumbnails.
+- Layers.
+- Playback.
+- Add frame.
+- Frame duration.
+
+The bottom workspace should be expandable and collapsible.
+
+When the timeline is collapsed, the canvas should become larger.
+
+When expanded, the canvas must remain usable.
+
+Do not make me scroll through a long settings form just to reach the canvas.
+
+
+---
+
+PART 3 — SIMPLIFY THE USER WORKFLOW
+
+5. Create an understandable starting experience
+
+When I open the application, do not immediately display a complicated editor full of controls.
+
+Provide a clean project library with:
+
+- New Project.
+- Open Project.
+- Recent Projects.
+- Duplicate.
+- Rename.
+- Delete.
+- Import.
+- Export.
+
+For a new project, provide a simple setup:
+
+1. Project name.
+2. Canvas size or aspect ratio.
+3. Frame rate.
+4. Start creating.
+
+Provide useful presets:
+
+- Instagram Reel / TikTok: 9:16.
+- YouTube: 16:9.
+- Square: 1:1.
+- Portrait: 4:5.
+- Custom canvas.
+
+Do not force advanced settings during project creation.
+
+6. Remove confusing terminology
+
+The previous application presented Storyboard and Frame-by-frame as if they were two equally important modes for beginners.
+
+Users may not understand the difference.
+
+Use clearer terminology.
+
+Suggested structure:
+
+Scene Layout
+
+The place where I compose a scene.
+
+I draw and arrange:
+
+- Characters.
+- Objects.
+- Backgrounds.
+- Props.
+- Effects.
+- Text.
+- Visual elements.
+
+This represents what exists in a scene and where it belongs.
+
+Do not describe this as automatically generating an animation.
+
+Draw Animation
+
+The place where I create drawings over time.
+
+I can:
+
+- Add blank frames.
+- Duplicate frames.
+- Draw different poses.
+- Reorder frames.
+- Adjust exposure.
+- Use onion skin.
+- Preview the sequence.
+
+Make the chronological order visually obvious.
+
+Motion Studio
+
+The place where I create movement without needing to draw every intermediate frame.
+
+I can:
+
+- Move objects.
+- Draw paths.
+- Orbit objects.
+- Make things bounce.
+- Rotate and scale.
+- Change opacity.
+- Transform shapes.
+- Animate text.
+- Move cameras.
+- Create independent effects.
+
+Beginner users should not be confronted with the technical settings immediately.
+
+Provide Simple and Advanced controls.
+
+These workspaces must have understandable relationships and must not be presented as disconnected tools.
+
+Ultimately, I want a coherent scene-and-animation workflow, not three separate systems that cannot communicate.
+
+If a unified timeline is technically achievable, prioritize it.
+
+It should show drawing frames, object tracks, character tracks, effects and camera tracks together on the same project timebase.
+
+If full unification would make the first release unstable, implement a coherent shared data model and progressively expose the track types without pretending they are already unified.
+
+
+---
+
+PART 4 — DRAWING EXPERIENCE
+
+7. Make drawing feel like a real drawing application
+
+This is a major priority.
+
+I need to draw comfortably, not simply place points on a technical grid.
+
+Implement functional versions of:
+
+- Pencil.
+- Pen.
+- Brush.
+- Eraser.
+- Line.
+- Rectangle.
+- Ellipse.
+- Arrow.
+- Text.
+- Selection.
+- Transform.
+- Color picker.
+- Fill tool where supported.
+- Lasso selection where feasible.
+
+Provide:
+
+- Adjustable brush size.
+- Color palette.
+- Custom color picker.
+- Brush opacity.
+- Undo.
+- Redo.
+- Clear.
+- Layer management.
+
+Support pressure sensitivity for compatible Android styluses when available.
+
+Do not display tools that have no real functionality.
+
+If a particular tool requires a later development milestone, label it honestly and do not present a fake button.
+
+Drawing improvements
+
+I need the ability to:
+
+- Draw continuous lines smoothly.
+- Draw small details.
+- Zoom in for precise work.
+- Zoom out to inspect composition.
+- Pan around the canvas.
+- Select and move artwork.
+- Transform selected artwork.
+- Erase only the intended part of a stroke when possible.
+- Work on independent layers.
+- Import a reference image if supported.
+
+The canvas should remain responsive when it contains many strokes.
+
+Use an appropriate rendering approach rather than repeatedly redrawing or serializing the entire project on every pointer movement.
+
+8. Zoom and pan must work reliably
+
+Implement proper canvas transformation.
+
+Requirements:
+
+- Two-finger pinch zoom.
+- Two-finger pan.
+- One-finger pan when the Hand tool is selected.
+- Clear zoom indicator.
+- Reset view.
+- Fit canvas to screen.
+- Minimum and maximum zoom limits.
+
+A major technical requirement:
+
+Drawing coordinates must remain in document space, not screen space.
+
+Touch coordinates must be converted through the inverse canvas transform.
+
+When the canvas is zoomed or panned, the drawing must still be placed at the correct document position.
+
+Prevent conflicts between:
+
+- Drawing.
+- Panning.
+- Pinching.
+- Scrolling.
+- Selecting tools.
+
+When a second pointer joins an active drawing gesture, handle the transition safely. Do not leave accidental lines or broken strokes.
+
+Test this on an actual Android touch device.
+
+
+---
+
+PART 5 — LAYERS AND BACKGROUNDS
+
+9. Make layers easy to understand
+
+Provide a familiar layers panel.
+
+Each layer should support:
+
+- Create.
+- Rename.
+- Duplicate.
+- Delete.
+- Reorder.
+- Hide/show.
+- Lock/unlock.
+- Select.
+- Adjust opacity.
+
+Use a clear visual indicator for the selected layer.
+
+Avoid making users open multiple technical dialogs to perform ordinary layer operations.
+
+Layer types
+
+Provide useful starting categories:
+
+- Character.
+- Background.
+- Props.
+- Effects.
+- Text.
+- Custom.
+
+These are organizational suggestions, not restrictions.
+
+10. Backgrounds are important
+
+Do not treat the background as merely the canvas color.
+
+I need to create actual environments.
+
+Support:
+
+- Background color.
+- Gradient backgrounds.
+- Drawn backgrounds.
+- Separate background layers.
+- Imported background images.
+- Simple textures if feasible.
+- Foreground/background separation.
+
+A background can contain multiple independent elements.
+
+For example:
+
+- Sky.
+- Distant mountains.
+- Trees.
+- Floor.
+- Buildings.
+- Clouds.
+- Light and shadows.
+
+Give background layers their own descriptions.
+
+OpenCode must understand the environment, not only the character standing in front of it.
+
+
+---
+
+PART 6 — UNDERSTAND SKETCHES WITHOUT VISION MODELS
+
+11. Design an AI-readable authoring system
+
+This is one of the most important product requirements.
+
+I want to be able to draw something extremely rough.
+
+It could be:
+
+- A stickman.
+- A ball.
+- A rough butterfly.
+- A box.
+- An arrow.
+- A rough room.
+- A background layout.
+- A geometric shape.
+
+I want OpenCode models to understand it even when they have no vision capabilities.
+
+Do not rely solely on PNG images.
+
+Every meaningful visual element must have structured and text-readable information.
+
+Semantic descriptions
+
+Provide an easy inspector for selected layers, objects and frames.
+
+Ask natural questions such as:
+
+- What is this?
+- What does it represent?
+- What is it doing?
+- Where is it located?
+- What is in front of it?
+- What is behind it?
+- How should it move?
+- What should happen next?
+
+A beginner should be able to answer these questions without knowing animation terminology.
+
+Allow one overall description for a layer and more specific descriptions for important individual objects.
+
+Do not force users to label every drawing stroke individually.
+
+Coordinate representation
+
+Preserve exact document geometry.
+
+For every drawing, include:
+
+- Stable stroke ID.
+- Layer ID.
+- Shape or stroke type.
+- Ordered coordinate points.
+- Normalized X and Y.
+- Color.
+- Stroke width.
+- Visibility.
+- Z-order.
+
+Use a consistent coordinate system.
+
+Origin must be top-left.
+
+X increases toward the right.
+
+Y increases downward.
+
+Do not reverse coordinate axes between drawing, export and rendering.
+
+Text-only spatial maps
+
+Generate a readable spatial map.
+
+Include:
+
+- Scene dimensions.
+- Aspect ratio.
+- Coordinate convention.
+- Named elements.
+- Layer order.
+- Stroke catalogue.
+- Approximate text grid.
+- Exact coordinates or references to the geometry data.
+- Background description.
+- Foreground and depth relationships.
+
+The text grid is an approximate locator, not a substitute for exact geometry.
+
+Important semantic rule
+
+Never claim that FramePilot has automatically recognized a stickman or another object if it has not.
+
+If a group of lines has no description, explicitly mark it as unlabelled.
+
+Do not invent semantic meaning.
+
+The creator's description is the source of semantic meaning.
+
+A text-only AI model should be able to reconstruct the geometry from structured data and understand its meaning from the accompanying descriptions.
+
+
+---
+
+PART 7 — FRAME-BY-FRAME ANIMATION
+
+12. Build a dependable frame editor
+
+The previous versions had serious problems with changing frame numbers and reversed sequence order.
+
+These problems must not happen again.
+
+Timeline behavior
+
+The frame timeline must read chronologically from left to right.
+
+Example:
+
+FRAME 1 → FRAME 2 → FRAME 3 → FRAME 4 → FRAME 5
+
+Never reverse the sequence by accident.
+
+Never use internal frame IDs as visible frame numbers.
+
+Use stable IDs internally and derive visible numbering from the sorted timeline position.
+
+Visible frame numbers should always be:
+
+1, 2, 3, 4, 5...
+
+Frame operations
+
+Implement:
+
+- Add blank frame.
+- Duplicate selected frame.
+- Insert after selected frame.
+- Delete selected frame.
+- Drag to reorder frames.
+- Adjust frame exposure.
+- Previous frame.
+- Next frame.
+- Play.
+- Pause.
+- Loop playback.
+- Onion skin.
+- Frame notes.
+
+Define these operations precisely.
+
+When duplicating a frame, the duplicate should be inserted immediately after the selected frame unless the user explicitly chooses another location.
+
+When deleting a frame, select the next chronological frame, or the previous one if the deleted frame was last.
+
+After reordering, display numbers must update according to the new chronological position.
+
+Frame sequence bugs — critical acceptance requirements
+
+Implement automated tests for these cases:
+
+Test 1: Initial sequence
+
+Create five frames.
+
+Expected display order:
+
+1, 2, 3, 4, 5.
+
+Playback must follow exactly that order.
+
+Test 2: Duplicate
+
+Select Frame 2 and duplicate it.
+
+Expected:
+
+1, 2, 3, 4, 5, 6.
+
+The new Frame 3 must contain the duplicated drawing from the original Frame 2. The previous frames must retain their artwork.
+
+Test 3: Insert blank
+
+Select Frame 3 and insert a blank frame after it.
+
+Expected numbering updates sequentially without changing the actual artwork of the other frames.
+
+Test 4: Delete
+
+Delete Frame 3.
+
+The remaining frames must retain their identities and order, with visible numbers updated to reflect the shortened sequence.
+
+Test 5: Reorder
+
+Drag Frame 5 to the position of Frame 2.
+
+Playback order must now match the displayed timeline.
+
+Test 6: Playback direction
+
+Playback must proceed left to right, from the first frame to the last.
+
+Reverse playback must only occur when an explicit reverse option is selected.
+
+Test 7: Exposure
+
+Frame exposure duration must affect the time that a drawing remains visible, without creating duplicate drawings or changing its sequence position.
+
+Test 8: Undo/redo
+
+Undoing a frame operation must restore the previous order and contents. Redo must restore the operation.
+
+All of these should be automated tests, not merely manual assurances.
+
+Timeline architecture
+
+Do not store the visible frame number as the frame's permanent identity.
+
+Use:
+
+- Stable UUID for each frame.
+- Explicit order index or ordered list.
+- Frame exposure duration.
+- Drawing data.
+- Layer references.
+- Frame notes.
+
+Visible frame number should be derived from the actual sorted timeline index.
+
+Playback must use the same ordering source as the visible timeline.
+
+Never maintain separate, conflicting ordering logic for the thumbnail strip, current-frame display, frame editor and playback engine.
+
+
+---
+
+PART 8 — MOTION GRAPHICS AND ADVANCED ANIMATION
+
+13. Give me creative freedom beyond frame-by-frame drawing
+
+FramePilot must not be limited to drawing sequences.
+
+I want to create complex motion graphics.
+
+Support independent animation for:
+
+- Characters.
+- Objects.
+- Shapes.
+- Text.
+- Particles.
+- Background elements.
+- Camera.
+- Effects.
+
+The user should be able to select one element and decide what it does.
+
+Beginner movement actions
+
+Offer understandable actions such as:
+
+- Move.
+- Bounce.
+- Rotate.
+- Scale.
+- Fade.
+- Follow a path.
+- Orbit another object.
+- Enter the scene.
+- Exit the scene.
+- Shake.
+- Morph.
+- Float.
+- Attach to another object.
+
+Each action should have a visual preview and simple parameters.
+
+For instance, instead of immediately displaying a coordinate editor:
+
+"Make the butterfly fly around the character."
+
+Then show:
+
+- Target: Main character.
+- Direction: Clockwise / Counter-clockwise.
+- Speed.
+- Distance.
+- Duration.
+- Repeat.
+- Start and end.
+
+Advanced coordinate and keyframe controls can be opened when needed.
+
+Advanced motion control
+
+Retain access to:
+
+- Keyframes.
+- Position.
+- Rotation.
+- Scale.
+- Opacity.
+- Easing.
+- Object paths.
+- Path orientation.
+- Loop and ping-pong.
+- Parent/child relationships.
+- Depth order.
+- Camera paths.
+- Shape morphs.
+- Typography.
+- Effects.
+- Character poses.
+
+Do not implement motion controls as disconnected decorative panels.
+
+Every displayed control must change real saved project data and be reflected in previews and exports.
+
+Character animation
+
+Support:
+
+- Basic skeleton posing.
+- Named joints.
+- Pose keyframes.
+- Pose notes.
+- Hand and foot placement.
+- Character position and scale.
+- Independent character movement.
+
+Do not pretend a simple joint coordinate editor is a full professional rigging system.
+
+Clearly distinguish implemented capabilities from future plans.
+
+Shape transformations
+
+I want to create transformations such as:
+
+- Circle to square.
+- Ball to box.
+- Line to curve.
+- Logo to text.
+- One geometric shape into another.
+
+Store source and destination geometry and explain the interpolation approach.
+
+Do not call an approximate polyline resampling preview a topology-perfect morph.
+
+Motion graphics
+
+Provide ways to create:
+
+- Kinetic typography.
+- Animated geometric elements.
+- Orbiting objects.
+- Flying objects.
+- Floating particles.
+- Trails.
+- Impact effects.
+- Shape transformations.
+- Camera zooms.
+- Camera pans.
+- Overlapping animation tracks.
+
+Keep complex controls optional.
+
+
+---
+
+PART 9 — A UNIFIED TIMELINE
+
+14. Avoid confusing separate animation systems
+
+The user should not have to guess whether a drawing belongs to Storyboard, Frame-by-frame or Animate.
+
+I want a clear relationship between:
+
+- Scene composition.
+- Drawing frames.
+- Character movement.
+- Object movement.
+- Effects.
+- Typography.
+- Camera.
+
+Ideally, provide one scene timeline with separate visual tracks.
+
+Example:
+
+SCENE 01 — 10 seconds
+
+BACKGROUND       ─────────────────────────
+
+CHARACTER        ─────── pose / movement ───
+
+BASKETBALL       ───── dribble ───────→ exit
+
+EFFECTS                  impact / streaks
+
+CAMERA           ───────────── zoom / shake
+
+TEXT             ───── opening title ──────
+
+A frame sequence can occupy a drawing track, while an object path occupies a motion track.
+
+All tracks must use the same timebase.
+
+If that cannot be implemented safely in the first release, design the data architecture for it and expose a clear, consistent interface rather than creating multiple incompatible timelines.
+
+
+---
+
+PART 10 — REELS AND SOCIAL VIDEO WORKFLOW
+
+15. Make the application useful for actual Reel production
+
+I primarily want to create short videos, including Instagram Reels and YouTube Shorts.
+
+Support production-oriented scene planning.
+
+Every project should be able to contain:
+
+- Multiple scenes.
+- Scene durations.
+- Scene ordering.
+- Narration references.
+- On-screen text.
+- Camera directions.
+- Background descriptions.
+- Sound direction.
+- Transitions.
+
+A scene should have a clear start and end.
+
+The overall Reel timeline should show total duration.
+
+Provide a 9:16 preset and safe-area guides for text and important visual subjects.
+
+Provide fields for:
+
+- Voiceover text.
+- Caption text.
+- Sound effects.
+- Background music.
+- Silence and pauses.
+- Transition timing.
+
+A full audio editor is not essential for the first milestone, but the project model must preserve audio references and synchronization instructions.
+
+Do not confuse scene duration with the number of drawings.
+
+Do not assume that every scene uses frame-by-frame animation.
+
+
+---
+
+PART 11 — OPENCODE AND TEXT-ONLY EXPORT
+
+16. This must be a core feature
+
+The exported project must allow AI coding models to reconstruct the creative intent without requiring vision capabilities.
+
+The export must be deterministic, complete and structured.
+
+Do not create a completely different custom export format that cannot be understood by the app itself.
+
+Native export structure
+
+Design one canonical package format, for example:
+
+FramePilot-Project/
+
+- README.md
+- START-HERE.md
+- OPENCODE-PROMPT.md
+- project.json
+- project-schema.json
+- package-manifest.json
+- creative-direction.md
+- animation-plan.md
+- scenes/
+- sketches/
+- frames/
+- layers/
+- motion/
+- accessibility/
+- assets/
+- skills/
+
+The exact folder names may be improved, but the schema must be documented and consistent.
+
+Required JSON data
+
+Include:
+
+- Project dimensions.
+- Aspect ratio.
+- Frame rate.
+- Scene IDs and order.
+- Scene durations.
+- Background data.
+- Layers.
+- Layer order.
+- Layer descriptions.
+- Visibility and lock state.
+- Drawing strokes.
+- Shape geometry.
+- Object identities.
+- Object descriptions.
+- Object positions.
+- Frame IDs and chronological ordering.
+- Exposure duration.
+- Keyframes.
+- Motion paths.
+- Animation relationships.
+- Camera information.
+- Typography.
+- Effects.
+- Audio references.
+- Creator notes.
+
+Use stable IDs.
+
+Do not use array indexes as permanent object identity.
+
+Text-only representation
+
+Generate:
+
+- A scene summary.
+- A semantic element catalogue.
+- Background/environment descriptions.
+- Layer descriptions.
+- A spatial coordinate map.
+- A stroke catalogue.
+- An ordered frame sequence.
+- Motion specifications.
+- Keyframe descriptions.
+- Timing information.
+- Missing-information warnings.
+
+Do not rely on images as the only source of visual information.
+
+SVG and PNG references should be supplementary.
+
+Export and import compatibility
+
+This is a strict requirement.
+
+A package exported by FramePilot must use the documented native schema.
+
+Provide a way to import a compatible FramePilot package.
+
+Exporting and importing the same project must not destroy:
+
+- Drawing geometry.
+- Layer order.
+- Frame numbering.
+- Exposure duration.
+- Motion paths.
+- Keyframes.
+- Background settings.
+- Object descriptions.
+
+Implement round-trip tests.
+
+Include schema versioning and migration support for future project formats.
+
+
+---
+
+PART 12 — SIMPLE MODE AND ADVANCED MODE
+
+17. Make advanced capabilities discoverable without overwhelming beginners
+
+The initial interface should show only controls needed for the current task.
+
+For example:
+
+When the user selects a character:
+
+Show:
+
+- Move.
+- Pose.
+- Scale.
+- Rotate.
+- Animate.
+
+When the user selects a shape:
+
+Show:
+
+- Change color.
+- Resize.
+- Rotate.
+- Morph.
+- Animate.
+
+When the user selects a background:
+
+Show:
+
+- Color.
+- Replace.
+- Adjust.
+- Describe.
+- Animate.
+
+When the user selects a frame:
+
+Show:
+
+- Duplicate.
+- Blank.
+- Delete.
+- Exposure.
+- Move left/right.
+- Frame note.
+
+Advanced settings should be inside a clearly named Advanced section.
+
+Do not make all advanced controls visible all the time.
+
+18. Include a genuinely useful first-time experience
+
+The application should teach through interaction.
+
+A beginner tutorial should help the user:
+
+1. Create a project.
+2. Draw a simple character.
+3. Add a background.
+4. Create a layer.
+5. Add an animation frame.
+6. Duplicate the frame and change the pose.
+7. Preview the movement.
+8. Add an object movement path.
+9. Describe a scene for AI.
+10. Export the project.
+
+Use short contextual tips.
+
+Avoid giant instructional paragraphs permanently displayed on the drawing screen.
+
+Allow users to skip or replay the tutorial.
+
+
+---
+
+PART 13 — TECHNICAL ARCHITECTURE AND CODE QUALITY
+
+19. Audit the existing project before rebuilding
+
+Inspect the current FramePilot project and determine:
+
+- Which features are genuinely implemented.
+- Which features are incomplete.
+- Which data models can safely be reused.
+- Which parts of the current architecture cause bugs.
+- Which components need to be replaced.
+
+Treat the existing code as a source of feature requirements, not a reason to preserve a poor architecture.
+
+If a clean rebuild is safer, create a new implementation rather than applying another series of patches to a monolithic screen.
+
+Use native Android Kotlin and Jetpack Compose unless a concrete technical reason requires another approach.
+
+Separate:
+
+- UI.
+- Canvas rendering.
+- Drawing model.
+- Layer model.
+- Animation model.
+- Timeline engine.
+- Preview engine.
+- Project persistence.
+- Import/export.
+- Validation.
+- Tests.
+
+Avoid putting the entire application inside one enormous MainActivity.kt.
+
+Use ViewModels and clear state ownership.
+
+Use a documented data model.
+
+Do not add unnecessary dependencies.
+
+Keep the core drawing, project and export workflow usable offline.
+
+20. Data integrity and autosave
+
+Implement reliable autosaving.
+
+Requirements:
+
+- Do not serialize the entire project for every pointer movement.
+- Debounce expensive persistence operations.
+- Preserve drawings after app backgrounding or screen rotation.
+- Handle application termination safely.
+- Save project versions or use atomic writes where appropriate.
+- Provide a visible save status.
+- Never silently discard user work.
+
+Undo and redo must work across the operations they claim to support.
+
+At minimum, include:
+
+- Drawing strokes.
+- Erasing.
+- Layer modifications.
+- Frame duplication.
+- Frame insertion.
+- Frame deletion.
+- Frame reordering.
+- Keyframe changes.
+- Object movement.
+
+21. Performance
+
+The app must remain responsive on ordinary Android phones.
+
+Test:
+
+- Large canvases.
+- Many strokes.
+- Multiple layers.
+- Many frames.
+- Long animation timelines.
+- Multiple tracks.
+- Frequent undo/redo.
+- Repeated saves.
+- Zoomed drawing.
+- Rapid frame switching.
+
+Use appropriate rendering and caching strategies.
+
+Avoid unnecessary state recompositions.
+
+Avoid blocking the UI thread during project serialization, image processing or export.
+
+
+---
+
+PART 14 — REQUIRED TESTING
+
+22. Do not tell me something works because its code exists
+
+This is especially important because previous versions had repeated compilation and behavior errors.
+
+Run tests at different levels.
+
+A. Source checks
+
+- Kotlin compilation.
+- Dependency resolution.
+- Resource processing.
+- Manifest validation.
+- Export JSON validation.
+
+B. Unit tests
+
+- Drawing coordinates.
+- Canvas transformation.
+- Zoom and pan.
+- Frame ordering.
+- Exposure calculations.
+- Timeline time conversion.
+- Keyframe interpolation.
+- Path sampling.
+- Shape morph validation.
+- Project serialization.
+- Project import/export.
+- Text-only spatial maps.
+
+C. UI tests
+
+Test actual interactions:
+
+- Draw a stroke.
+- Erase a stroke.
+- Create a layer.
+- Hide a layer.
+- Lock a layer.
+- Zoom in and out.
+- Pan.
+- Add a frame.
+- Duplicate a frame.
+- Delete a frame.
+- Reorder frames.
+- Play the sequence.
+- Add a motion track.
+- Add a keyframe.
+- Export a package.
+
+D. Device testing
+
+Test on an actual Android phone or emulator.
+
+Pay special attention to touch gestures and the frame timeline.
+
+Do not claim physical-device testing when only source analysis has been performed.
+
+23. Frame-order regression fixture
+
+Use the previously supplied eight-cel basketball drawing as a regression test whenever that export is available.
+
+It contains:
+
+- Eight authored drawings.
+- Fourteen total exposure frames.
+- A 30 FPS project.
+- A last-frame note about faster bouncing.
+
+Verify:
+
+- All eight drawings survive import.
+- Their original stroke geometry is preserved.
+- Frame order is unchanged.
+- Exposure values remain unchanged.
+- The visible sequence is chronological.
+- Playback follows the same order as the displayed timeline.
+- Export and re-import preserve all eight cels.
+
+Never silently reverse the sequence.
+
+Never change frame numbering because of an unrelated UI recomposition.
+
+
+---
+
+PART 15 — DEVELOPMENT AND DELIVERABLES
+
+24. Build the application, not a mockup
+
+I need a functional Android application.
+
+Do not stop after:
+
+- Producing a design concept.
+- Creating screenshots.
+- Building an attractive Figma-style mockup.
+- Writing an outline.
+- Creating non-functional controls.
+
+Every presented feature must work or be clearly marked as not yet implemented.
+
+I want the application to be built in practical milestones.
+
+Milestone 1 — Usable drawing studio
+
+- New project.
+- Project library.
+- Canvas.
+- Drawing tools.
+- Color palette.
+- Layers.
+- Background.
+- Zoom and pan.
+- Undo and redo.
+- Autosave.
+
+Milestone 2 — Reliable animation workflow
+
+- Frame timeline.
+- Frame insertion.
+- Duplication.
+- Deletion.
+- Reordering.
+- Exposure duration.
+- Onion skin.
+- Playback.
+- Correct chronological numbering.
+- Frame notes.
+
+Milestone 3 — Motion graphics studio
+
+- Object tracks.
+- Character poses.
+- Motion paths.
+- Keyframes.
+- Easing.
+- Shape transformations.
+- Typography.
+- Camera.
+- Effects.
+- Simple and Advanced controls.
+
+Milestone 4 — AI-readable export
+
+- Native project format.
+- Structured JSON.
+- Text-only spatial descriptions.
+- Layer and object semantics.
+- Frame geometry.
+- Motion specifications.
+- Background information.
+- Import/export round trips.
+
+Milestone 5 — Quality and release
+
+- Fix all compilation errors.
+- Fix all critical runtime issues.
+- Run automated tests.
+- Build the debug APK.
+- Verify the output file.
+- Document installation.
+- Provide a real test report.
+
+Do not rush all milestones into one enormous, untested implementation.
+
+But do not stop after making a plan. Continue implementing and validating each milestone.
+
+25. Final deliverables
+
+Produce:
+
+1. Complete Android Studio project source.
+2. Working debug APK when the build environment permits.
+3. Kaggle notebook for APK building if needed.
+4. Complete documentation.
+5. Beginner user guide.
+6. Technical architecture document.
+7. Export format specification.
+8. Automated test suite.
+9. Test report.
+10. Known limitations list.
+11. Sample project demonstrating drawing, background, character, object movement and text-only AI export.
+
+The final report must distinguish:
+
+- Implemented.
+- Tested.
+- Built.
+- Installed.
+- Not yet verified.
+
+Never claim a test passed unless it was actually executed.
+
+
+---
+
+THE FINAL PRODUCT STANDARD
+
+The finished application should feel like a drawing app first, an animation studio second, and an AI production tool behind the scenes.
+
+I should be able to open it and understand how to start drawing without reading a technical manual.
+
+I should be able to sketch a rough stickman, design its background, add a butterfly, make the butterfly orbit around it, create a shape transformation, and organize everything without fighting the interface.
+
+I should also be able to provide the exported project to a text-only OpenCode model and have it understand:
+
+- What I drew.
+- What each element represents.
+- Where it is positioned.
+- What the background contains.
+- Which objects are in front or behind.
+- How the character is posed.
+- What moves.
+- How it moves.
+- When it moves.
+- What should happen next.
+
+Do not confuse a large number of controls with creative freedom.
+
+Creative freedom comes from making complex ideas easy to express.
+
+Build the application around that principle.

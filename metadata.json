@@ -1,0 +1,6 @@
+{
+  "name": "FramePilot",
+  "description": "Beginner-friendly mobile drawing and animation direction studio for AI-assisted video production.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

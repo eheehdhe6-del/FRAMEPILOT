@@ -98,7 +98,12 @@ object SpatialMapGenerator {
         return warnings
     }
 
-    fun generateSceneSpatialMap(project: FramePilotProject, scene: Scene): String {
+    fun generateSceneSpatialMap(
+        project: FramePilotProject,
+        scene: Scene,
+        sketchAsDirectionOnly: Boolean = project.exportSketchAsDirectionOnly,
+        externalStyleGuideNote: String = project.exportStyleGuideNote
+    ): String {
         val sb = StringBuilder()
         val w = project.canvasWidth
         val h = project.canvasHeight
@@ -112,6 +117,13 @@ object SpatialMapGenerator {
         sb.appendLine("- **Frame Rate**: ${project.fps} FPS | **Effective Duration**: ${scene.effectiveDurationMs(project.fps)} ms")
         sb.appendLine("- **Coordinate Convention**: Origin `(0, 0)` at **TOP-LEFT**. `+X` increases **RIGHT** (`0..$w`, norm `0.0..1.0`). `+Y` increases **DOWNWARD** (`0..$h`, norm `0.0..1.0`).")
         sb.appendLine("- **Semantic Honesty Rule**: FramePilot does NOT invent object recognition. Any stroke or layer without a creator-authored description is explicitly marked `unlabelled`, while its exact geometric shape, dimensions, color, and polyline path are fully preserved.")
+        if (sketchAsDirectionOnly) {
+            val styleDirective = externalStyleGuideNote.trim()
+            val styleSuffix = if (styleDirective.isNotBlank()) " Target style / skill.md: `$styleDirective`." else ""
+            sb.appendLine("- **Art Direction Rule (Direction Only)**: Rough strokes, simple shapes, and 2D stickman skeletons are **spatial, pose, and motion direction only**—never treat their sketch simplicity as the final rendering style. Follow the user's `skill.md` or polished production art direction instead.$styleSuffix")
+        } else {
+            sb.appendLine("- **Art Direction Rule (Faithful Sketch Mode)**: Closely preserve the drawn strokes, shapes, and visual simplicity.")
+        }
         sb.appendLine()
 
         // Background section
@@ -136,6 +148,7 @@ object SpatialMapGenerator {
 
         // True 2D Visual ASCII Render (rasterized strokes, shapes, poses, text)
         val firstFrame = TimelineEngine.normalizeOrder(scene.frames).firstOrNull()
+        val activePosesByLayer = RigEngine.buildActivePosesByLayer(scene, firstFrame)
         sb.appendLine("## 2. 2D Visual Canvas Render (Text-Only AI Sight)")
         sb.appendLine("> Rasterized directly from visible strokes, shapes, 2D stickman skeletons, and text positions so non-vision AI models can see the exact visual layout and silhouettes.")
         sb.appendLine()
@@ -150,7 +163,14 @@ object SpatialMapGenerator {
             sb.appendLine("_No layers in scene._")
         } else {
             orderedLayers.forEachIndexed { zIdx, layer ->
-                appendLayerVisualDetails(sb, project, orderedLayers, zIdx, layer)
+                appendLayerVisualDetails(
+                    sb = sb,
+                    project = project,
+                    orderedLayers = orderedLayers,
+                    zIdx = zIdx,
+                    layer = layer,
+                    activePosesByLayer = activePosesByLayer
+                )
             }
         }
         return sb.toString()
@@ -162,10 +182,17 @@ object SpatialMapGenerator {
         orderedLayers: List<Layer>,
         zIdx: Int,
         layer: Layer,
-        maxPolylinePts: Int = 14
+        maxPolylinePts: Int = 14,
+        activePosesByLayer: Map<String, SkeletonPose> = emptyMap()
     ) {
         val w = project.canvasWidth
         val h = project.canvasHeight
+        val effectivePoses = if (activePosesByLayer.isNotEmpty()) {
+            activePosesByLayer
+        } else {
+            orderedLayers.mapNotNull { l -> l.skeletonPose?.let { l.id to it } }.toMap()
+        }
+        val groupNames = layer.groups.associate { it.id to it.name }
         val label = layer.semantic.displayLabel("unlabelled")
         sb.appendLine("### Z=$zIdx — ${layer.name} [${layer.category.label}] (`${layer.id}`)")
         sb.appendLine("- **Visibility**: ${layer.visible} | **Locked**: ${layer.locked} | **Opacity**: ${fmt(layer.opacity)}")
@@ -188,8 +215,11 @@ object SpatialMapGenerator {
         if (layer.semantic.whatShouldHappenNext.isNotBlank()) {
             sb.appendLine("- **What Happens Next**: ${layer.semantic.whatShouldHappenNext}")
         }
+        if (layer.groups.isNotEmpty()) {
+            sb.appendLine("- **Element Groups (${layer.groups.size})**: " + layer.groups.joinToString(", ") { "${it.name} (`${it.id}`)" })
+        }
 
-        val bbox = computeLayerBounds(layer, w, h)
+        val bbox = computeLayerBounds(layer, w, h, effectivePoses)
         if (bbox != null) {
             val region = describeRegion(bbox.centerX, bbox.centerY, w, h)
             sb.appendLine("- **Exact Bounding Box**: x=[${fmt(bbox.minX)}..${fmt(bbox.maxX)}] (norm ${fmt(bbox.minX / w)}..${fmt(bbox.maxX / w)}), y=[${fmt(bbox.minY)}..${fmt(bbox.maxY)}] (norm ${fmt(bbox.minY / h)}..${fmt(bbox.maxY / h)}), size=(${fmt(bbox.maxX - bbox.minX)}×${fmt(bbox.maxY - bbox.minY)}px), center=(${fmt(bbox.centerX)}, ${fmt(bbox.centerY)}), region=$region")
@@ -198,46 +228,73 @@ object SpatialMapGenerator {
         if (layer.sceneShapes.isNotEmpty()) {
             sb.appendLine("- **Shapes (${layer.sceneShapes.size})**:")
             layer.sceneShapes.forEach { s ->
-                sb.appendLine("  - " + summarizeShape(s, w, h))
+                val targetPose = RigEngine.resolveTargetPose(s.rigAttachment, layer.id, effectivePoses)
+                val deformed = RigEngine.deformShape(s, targetPose)
+                sb.appendLine("  - " + summarizeShape(deformed, w, h, groupNames))
             }
         }
         if (layer.sceneTexts.isNotEmpty()) {
             sb.appendLine("- **Typography Elements (${layer.sceneTexts.size})**:")
             layer.sceneTexts.forEach { t ->
-                sb.appendLine("  - " + summarizeText(t, w, h))
+                val targetPose = RigEngine.resolveTargetPose(t.rigAttachment, layer.id, effectivePoses)
+                val deformed = RigEngine.deformText(t, targetPose)
+                sb.appendLine("  - " + summarizeText(deformed, w, h, groupNames))
             }
         }
-        if (layer.skeletonPose != null) {
-            sb.appendLine("- **2D Pose Keyframe (`${layer.skeletonPose.name}`)**: ${layer.skeletonPose.note.ifBlank { "No pose note" }}")
+        val activePose = effectivePoses[layer.id] ?: layer.skeletonPose
+        if (activePose != null) {
+            sb.appendLine("- **2D Pose Keyframe (`${activePose.name}`)**: ${activePose.note.ifBlank { "No pose note" }}")
             sb.appendLine("  - Bones: `head-neck-chest-hip`, `neck-leftShoulder-leftElbow-leftHand`, `neck-rightShoulder-rightElbow-rightHand`, `hip-leftKnee-leftFoot`, `hip-rightKnee-rightFoot`")
-            layer.skeletonPose.joints.entries.sortedBy { it.key }.forEach { (joint, pt) ->
+            activePose.joints.entries.sortedBy { it.key }.forEach { (joint, pt) ->
                 sb.appendLine("  - `$joint`: (${fmt(pt.x)}, ${fmt(pt.y)}) norm=(${fmt(pt.x / w)}, ${fmt(pt.y / h)})")
             }
         }
         if (layer.sceneStrokes.isNotEmpty()) {
             sb.appendLine("- **Stroke Catalogue (${layer.sceneStrokes.size} strokes)**:")
             layer.sceneStrokes.forEach { st ->
-                sb.appendLine("  - " + summarizeStroke(st, w, h, maxPolylinePts))
+                val targetPose = RigEngine.resolveTargetPose(st.rigAttachment, layer.id, effectivePoses)
+                val deformed = RigEngine.deformStroke(st, targetPose, w, h)
+                sb.appendLine("  - " + summarizeStroke(deformed, w, h, maxPolylinePts, groupNames))
             }
         }
         sb.appendLine()
     }
 
-    fun summarizeShape(shape: SceneShape, w: Int, h: Int): String {
+    fun summarizeShape(
+        shape: SceneShape,
+        w: Int,
+        h: Int,
+        groupNames: Map<String, String> = emptyMap()
+    ): String {
         val label = shape.semantic.displayLabel("unlabelled")
         val cx = shape.x + shape.width / 2f
         val cy = shape.y + shape.height / 2f
         val region = describeRegion(cx, cy, w, h)
         val fillStr = if (shape.filled && !shape.fillColorHex.isNullOrBlank()) shape.fillColorHex else "none"
-        return "`${shape.id}` **${shape.shapeType.name}**: region=$region, pos=(${fmt(shape.x)}, ${fmt(shape.y)}), size=(${fmt(shape.width)}×${fmt(shape.height)}px), center=(${fmt(cx)}, ${fmt(cy)}) norm=(${fmt(cx / w)}, ${fmt(cy / h)}), rot=${fmt(shape.rotationDeg)}°, stroke=`${shape.strokeColorHex}` width=${fmt(shape.strokeWidth)}, fill=`$fillStr`, opacity=${fmt(shape.opacity)}, label=$label"
+        val groupStr = shape.groupId?.let { gid -> " group=\"${groupNames[gid] ?: gid}\"" }.orEmpty()
+        val rigStr = shape.rigAttachment?.let { att -> " rigBone=`${RigEngine.displayBoneLabel(att)}`" }.orEmpty()
+        return "`${shape.id}` **${shape.shapeType.name}**: region=$region, pos=(${fmt(shape.x)}, ${fmt(shape.y)}), size=(${fmt(shape.width)}×${fmt(shape.height)}px), center=(${fmt(cx)}, ${fmt(cy)}) norm=(${fmt(cx / w)}, ${fmt(cy / h)}), rot=${fmt(shape.rotationDeg)}°, stroke=`${shape.strokeColorHex}` width=${fmt(shape.strokeWidth)}, fill=`$fillStr`, opacity=${fmt(shape.opacity)}$groupStr$rigStr, label=$label"
     }
 
-    fun summarizeText(text: SceneText, w: Int, h: Int): String {
+    fun summarizeText(
+        text: SceneText,
+        w: Int,
+        h: Int,
+        groupNames: Map<String, String> = emptyMap()
+    ): String {
         val region = describeRegion(text.x, text.y, w, h)
-        return "`${text.id}` **\"${text.text}\"**: region=$region, pos=(${fmt(text.x)}, ${fmt(text.y)}) norm=(${fmt(text.x / w)}, ${fmt(text.y / h)}), size=${fmt(text.fontSizeSp)}sp, rot=${fmt(text.rotationDeg)}°, color=`${text.colorHex}`, opacity=${fmt(text.opacity)}, anim=${text.animationStyle.name}, label=${text.semantic.displayLabel("unlabelled")}"
+        val groupStr = text.groupId?.let { gid -> " group=\"${groupNames[gid] ?: gid}\"" }.orEmpty()
+        val rigStr = text.rigAttachment?.let { att -> " rigBone=`${RigEngine.displayBoneLabel(att)}`" }.orEmpty()
+        return "`${text.id}` **\"${text.text}\"**: region=$region, pos=(${fmt(text.x)}, ${fmt(text.y)}) norm=(${fmt(text.x / w)}, ${fmt(text.y / h)}), size=${fmt(text.fontSizeSp)}sp, rot=${fmt(text.rotationDeg)}°, color=`${text.colorHex}`, opacity=${fmt(text.opacity)}, anim=${text.animationStyle.name}$groupStr$rigStr, label=${text.semantic.displayLabel("unlabelled")}"
     }
 
-    fun summarizeStroke(stroke: DrawingStroke, w: Int, h: Int, maxTracePoints: Int = 14): String {
+    fun summarizeStroke(
+        stroke: DrawingStroke,
+        w: Int,
+        h: Int,
+        maxTracePoints: Int = 14,
+        groupNames: Map<String, String> = emptyMap()
+    ): String {
         val label = stroke.semanticLabel?.takeIf { it.isNotBlank() } ?: "unlabelled"
         val pts = stroke.points
         if (pts.isEmpty()) return "`${stroke.id}` [${stroke.tool.name}] (0 pts) label=$label"
@@ -254,10 +311,12 @@ object SpatialMapGenerator {
         val simplified = simplifyPolyline(pts, maxTracePoints)
         val shapeDesc = classifyStrokeShape(pts, simplified, stroke.isFilledLoop)
         val fillInfo = if (stroke.isFilledLoop && !stroke.fillColorHex.isNullOrBlank()) " fill=`${stroke.fillColorHex}`" else ""
+        val groupStr = stroke.groupId?.let { gid -> " group=\"${groupNames[gid] ?: gid}\"" }.orEmpty()
+        val rigStr = stroke.rigAttachment?.let { att -> " rigBone=`${RigEngine.displayBoneLabel(att)}`" }.orEmpty()
         val traceStr = simplified.joinToString(" -> ") { p ->
             "(${fmt(p.x)},${fmt(p.y)} | n:${fmt(p.x / w)},${fmt(p.y / h)})"
         }
-        return "`${stroke.id}` [${stroke.tool.name}] shape=\"$shapeDesc\" region=$region color=`${stroke.colorHex}`$fillInfo width=${fmt(stroke.strokeWidth)} opacity=${fmt(stroke.opacity)} len=${fmt(pathLen)}px span=${fmt(spanW)}×${fmt(spanH)}px bbox=[${fmt(minX)}..${fmt(maxX)}, ${fmt(minY)}..${fmt(maxY)}] norm=[${fmt(minX / w)}..${fmt(maxX / w)}, ${fmt(minY / h)}..${fmt(maxY / h)}] trace(${pts.size}pts->${simplified.size}kpts)=$traceStr label=$label"
+        return "`${stroke.id}` [${stroke.tool.name}] shape=\"$shapeDesc\" region=$region color=`${stroke.colorHex}`$fillInfo width=${fmt(stroke.strokeWidth)} opacity=${fmt(stroke.opacity)} len=${fmt(pathLen)}px span=${fmt(spanW)}×${fmt(spanH)}px bbox=[${fmt(minX)}..${fmt(maxX)}, ${fmt(minY)}..${fmt(maxY)}] norm=[${fmt(minX / w)}..${fmt(maxX / w)}, ${fmt(minY / h)}..${fmt(maxY / h)}]$groupStr$rigStr trace(${pts.size}pts->${simplified.size}kpts)=$traceStr label=$label"
     }
 
     private fun computePathLength(pts: List<StrokePoint>): Float {
@@ -350,6 +409,21 @@ object SpatialMapGenerator {
         val isClosed = isFilledLoop || (rawPts.size >= 4 && endToEnd <= max(24f, diag * 0.25f))
 
         if (isClosed) {
+            val filledTag = if (isFilledLoop) "filled " else ""
+            val corners = if (simplified.size >= 2 &&
+                hypot(simplified.last().x - simplified.first().x, simplified.last().y - simplified.first().y) <= max(16f, diag * 0.12f)
+            ) {
+                simplified.dropLast(1)
+            } else {
+                simplified
+            }
+            if (corners.size == 3) {
+                return "${filledTag}closed triangle (3 corners)"
+            }
+            if (corners.size == 4 && areCornersRoughlyRectangular(corners)) {
+                return "${filledTag}closed rectangle/square (4 corners)"
+            }
+
             val cx = rawPts.map { it.x }.average().toFloat()
             val cy = rawPts.map { it.y }.average().toFloat()
             val radii = rawPts.map { hypot(it.x - cx, it.y - cy) }
@@ -357,7 +431,6 @@ object SpatialMapGenerator {
             val stdDev = sqrt(radii.map { (it - meanR) * (it - meanR) }.average()).toFloat()
             val relVar = stdDev / meanR
             val aspect = spanW / spanH.coerceAtLeast(1f)
-            val filledTag = if (isFilledLoop) "filled " else ""
             return when {
                 relVar < 0.22f && aspect in 0.72f..1.38f -> "${filledTag}closed circle-like loop"
                 relVar < 0.28f -> "${filledTag}closed oval/ellipse loop"
@@ -384,6 +457,26 @@ object SpatialMapGenerator {
             turns <= 3 -> "curved wave/S-path ($turns bends)"
             else -> "multi-bend freehand stroke ($turns bends)"
         }
+    }
+
+    private fun areCornersRoughlyRectangular(corners: List<StrokePoint>): Boolean {
+        if (corners.size != 4) return false
+        for (i in corners.indices) {
+            val prev = corners[(i + 3) % 4]
+            val curr = corners[i]
+            val next = corners[(i + 1) % 4]
+            val ax = prev.x - curr.x
+            val ay = prev.y - curr.y
+            val bx = next.x - curr.x
+            val by = next.y - curr.y
+            val ma = hypot(ax, ay)
+            val mb = hypot(bx, by)
+            if (ma < 4f || mb < 4f) return false
+            val cosTheta = ((ax * bx + ay * by) / (ma * mb)).coerceIn(-1f, 1f)
+            val deg = Math.toDegrees(kotlin.math.acos(cosTheta.toDouble()))
+            if (deg !in 65.0..115.0) return false
+        }
+        return true
     }
 
     private fun countSignificantTurns(pts: List<StrokePoint>): Int {
@@ -431,20 +524,31 @@ object SpatialMapGenerator {
         val centerY: Float get() = (minY + maxY) / 2f
     }
 
-    fun computeLayerBounds(layer: Layer, canvasW: Int, canvasH: Int): LayerBounds? {
+    fun computeLayerBounds(
+        layer: Layer,
+        canvasW: Int,
+        canvasH: Int,
+        activePosesByLayer: Map<String, SkeletonPose> = emptyMap()
+    ): LayerBounds? {
         val xs = mutableListOf<Float>()
         val ys = mutableListOf<Float>()
         layer.sceneStrokes.forEach { st ->
-            st.points.forEach { pt -> xs.add(pt.x); ys.add(pt.y) }
+            val targetPose = RigEngine.resolveTargetPose(st.rigAttachment, layer.id, activePosesByLayer)
+            val def = RigEngine.deformStroke(st, targetPose, canvasW, canvasH)
+            def.points.forEach { pt -> xs.add(pt.x); ys.add(pt.y) }
         }
         layer.sceneShapes.forEach { sh ->
-            xs.add(sh.x); xs.add(sh.x + sh.width)
-            ys.add(sh.y); ys.add(sh.y + sh.height)
+            val targetPose = RigEngine.resolveTargetPose(sh.rigAttachment, layer.id, activePosesByLayer)
+            val def = RigEngine.deformShape(sh, targetPose)
+            xs.add(def.x); xs.add(def.x + def.width)
+            ys.add(def.y); ys.add(def.y + def.height)
         }
         layer.sceneTexts.forEach { tx ->
-            xs.add(tx.x); ys.add(tx.y)
+            val targetPose = RigEngine.resolveTargetPose(tx.rigAttachment, layer.id, activePosesByLayer)
+            val def = RigEngine.deformText(tx, targetPose)
+            xs.add(def.x); ys.add(def.y)
         }
-        layer.skeletonPose?.joints?.values?.forEach { j ->
+        (activePosesByLayer[layer.id] ?: layer.skeletonPose)?.joints?.values?.forEach { j ->
             xs.add(j.x); ys.add(j.y)
         }
         if (xs.isEmpty() || ys.isEmpty()) return null
@@ -602,13 +706,25 @@ object SpatialMapGenerator {
             }
         }
 
+        val activePosesByLayer = buildMap<String, SkeletonPose> {
+            layers.forEach { layer ->
+                val p = frameOverlay?.layerPoses?.get(layer.id) ?: layer.skeletonPose
+                if (p != null) put(layer.id, p)
+            }
+        }
+
         layers.filter { it.visible }.forEach { layer ->
             val frameStrokes = frameOverlay?.layerDrawings?.get(layer.id).orEmpty()
             val frameShapes = frameOverlay?.layerShapes?.get(layer.id).orEmpty()
-            val framePose = frameOverlay?.layerPoses?.get(layer.id)
-            val allStrokes = layer.sceneStrokes + frameStrokes
-            val allShapes = layer.sceneShapes + frameShapes
-            val activePose = framePose ?: layer.skeletonPose
+            val allStrokes = (layer.sceneStrokes + frameStrokes).map { st ->
+                val targetPose = RigEngine.resolveTargetPose(st.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformStroke(st, targetPose, w, h)
+            }
+            val allShapes = (layer.sceneShapes + frameShapes).map { sh ->
+                val targetPose = RigEngine.resolveTargetPose(sh.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformShape(sh, targetPose)
+            }
+            val activePose = activePosesByLayer[layer.id]
 
             if (allStrokes.isEmpty() && allShapes.isEmpty() && layer.sceneTexts.isEmpty() && activePose == null) {
                 return@forEach
@@ -630,7 +746,11 @@ object SpatialMapGenerator {
                 drawPolylineGrid(st.points.map { it.x to it.y }, symbol, closed = st.isFilledLoop)
             }
             activePose?.let { drawPoseGrid(it) }
-            layer.sceneTexts.forEach { tx ->
+            layer.sceneTexts.forEach { rawTx ->
+                val tx = RigEngine.deformText(
+                    rawTx,
+                    RigEngine.resolveTargetPose(rawTx.rigAttachment, layer.id, activePosesByLayer)
+                )
                 val tag = "\"${tx.text.take(10)}\""
                 val startCol = toCol(tx.x).coerceIn(0, (cols - tag.length).coerceAtLeast(0))
                 val r = toRow(tx.y)

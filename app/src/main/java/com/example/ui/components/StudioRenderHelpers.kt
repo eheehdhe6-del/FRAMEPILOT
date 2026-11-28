@@ -30,8 +30,10 @@ import com.example.domain.model.SceneShape
 import com.example.domain.model.SceneText
 import com.example.domain.model.ShapeType
 import com.example.domain.model.SkeletonPose
+import com.example.domain.model.TextAnimationStyle
 import com.example.engine.EvaluatedMotion
 import com.example.engine.MotionEvaluator
+import com.example.engine.RigEngine
 import com.example.engine.SpatialMapGenerator
 import com.example.engine.TimelineEngine
 import kotlin.math.PI
@@ -73,10 +75,15 @@ fun DrawScope.renderSceneDocument(
     evaluateMotionAtMs: Long? = null,
     textMeasurer: TextMeasurer? = null,
     showPoseSkeleton: Boolean = true,
-    selectedShapeId: String? = null,
-    selectedTextId: String? = null,
+    selectedShapeIds: Set<String> = emptySet(),
+    selectedTextIds: Set<String> = emptySet(),
     selectedStrokeIds: Set<String> = emptySet(),
-    activeMotionTrackId: String? = null
+    activeMotionTrackId: String? = null,
+    poseHighlightLayerId: String? = null,
+    highlightedPoseJoint: String? = null,
+    highlightWholePose: Boolean = false,
+    ghostPrevScene: Pair<Scene, AnimationFrame?>? = null,
+    ghostNextScene: Pair<Scene, AnimationFrame?>? = null
 ) {
     val w = project.canvasWidth.toFloat().coerceAtLeast(1f)
     val h = project.canvasHeight.toFloat().coerceAtLeast(1f)
@@ -104,19 +111,77 @@ fun DrawScope.renderSceneDocument(
         }
     }
 
+    val activePosesByLayer = RigEngine.buildActivePosesByLayer(scene, activeFrame)
+
     // 2. Onion skin (previous = soft coral tint, next = soft sky blue tint)
     if (onionSkinEnabled && evaluateMotionAtMs == null) {
-        previousFrame?.let { prev ->
+        if (previousFrame != null) {
+            val prevPoses = RigEngine.buildActivePosesByLayer(scene, previousFrame)
             scene.orderedLayers().filter { it.visible }.forEach { layer ->
-                prev.layerDrawings[layer.id].orEmpty().forEach { stroke ->
-                    drawStrokeItem(stroke.copy(colorHex = "#FF6B5B", opacity = 0.25f))
+                if (previousFrame.layerPoses[layer.id] != null) {
+                    layer.sceneShapes.filter { it.rigAttachment != null }.forEach { shape ->
+                        val target = RigEngine.resolveTargetPose(shape.rigAttachment, layer.id, prevPoses)
+                        val def = RigEngine.deformShape(shape, target)
+                        drawShapeItem(def.copy(strokeColorHex = "#FF6B5B", fillColorHex = if (def.filled) "#FF6B5B" else null, opacity = 0.18f))
+                    }
+                    layer.sceneStrokes.filter { it.rigAttachment != null }.forEach { stroke ->
+                        val target = RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, prevPoses)
+                        val def = RigEngine.deformStroke(stroke, target, project.canvasWidth, project.canvasHeight)
+                        drawStrokeItem(def.copy(colorHex = "#FF6B5B", opacity = 0.22f))
+                    }
+                }
+                previousFrame.layerDrawings[layer.id].orEmpty().forEach { stroke ->
+                    val target = RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, prevPoses)
+                    val def = RigEngine.deformStroke(stroke, target, project.canvasWidth, project.canvasHeight)
+                    drawStrokeItem(def.copy(colorHex = "#FF6B5B", opacity = 0.25f))
+                }
+            }
+        } else if (ghostPrevScene != null) {
+            val (gScene, gFrame) = ghostPrevScene
+            val prevPoses = RigEngine.buildActivePosesByLayer(gScene, gFrame)
+            gScene.orderedLayers().filter { it.visible }.forEach { layer ->
+                layer.sceneShapes.forEach { shape ->
+                    val def = RigEngine.deformShape(shape, RigEngine.resolveTargetPose(shape.rigAttachment, layer.id, prevPoses))
+                    drawShapeItem(def.copy(strokeColorHex = "#FF6B5B", fillColorHex = if (def.filled) "#FF6B5B" else null, opacity = 0.14f))
+                }
+                (layer.sceneStrokes + gFrame?.layerDrawings?.get(layer.id).orEmpty()).forEach { stroke ->
+                    val def = RigEngine.deformStroke(stroke, RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, prevPoses), project.canvasWidth, project.canvasHeight)
+                    drawStrokeItem(def.copy(colorHex = "#FF6B5B", opacity = 0.18f))
                 }
             }
         }
-        nextFrame?.let { next ->
+        if (nextFrame != null) {
+            val nextPoses = RigEngine.buildActivePosesByLayer(scene, nextFrame)
             scene.orderedLayers().filter { it.visible }.forEach { layer ->
-                next.layerDrawings[layer.id].orEmpty().forEach { stroke ->
-                    drawStrokeItem(stroke.copy(colorHex = "#3E9BFF", opacity = 0.22f))
+                if (nextFrame.layerPoses[layer.id] != null) {
+                    layer.sceneShapes.filter { it.rigAttachment != null }.forEach { shape ->
+                        val target = RigEngine.resolveTargetPose(shape.rigAttachment, layer.id, nextPoses)
+                        val def = RigEngine.deformShape(shape, target)
+                        drawShapeItem(def.copy(strokeColorHex = "#3E9BFF", fillColorHex = if (def.filled) "#3E9BFF" else null, opacity = 0.16f))
+                    }
+                    layer.sceneStrokes.filter { it.rigAttachment != null }.forEach { stroke ->
+                        val target = RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, nextPoses)
+                        val def = RigEngine.deformStroke(stroke, target, project.canvasWidth, project.canvasHeight)
+                        drawStrokeItem(def.copy(colorHex = "#3E9BFF", opacity = 0.20f))
+                    }
+                }
+                nextFrame.layerDrawings[layer.id].orEmpty().forEach { stroke ->
+                    val target = RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, nextPoses)
+                    val def = RigEngine.deformStroke(stroke, target, project.canvasWidth, project.canvasHeight)
+                    drawStrokeItem(def.copy(colorHex = "#3E9BFF", opacity = 0.22f))
+                }
+            }
+        } else if (ghostNextScene != null) {
+            val (gScene, gFrame) = ghostNextScene
+            val nextPoses = RigEngine.buildActivePosesByLayer(gScene, gFrame)
+            gScene.orderedLayers().filter { it.visible }.forEach { layer ->
+                layer.sceneShapes.forEach { shape ->
+                    val def = RigEngine.deformShape(shape, RigEngine.resolveTargetPose(shape.rigAttachment, layer.id, nextPoses))
+                    drawShapeItem(def.copy(strokeColorHex = "#3E9BFF", fillColorHex = if (def.filled) "#3E9BFF" else null, opacity = 0.14f))
+                }
+                (layer.sceneStrokes + gFrame?.layerDrawings?.get(layer.id).orEmpty()).forEach { stroke ->
+                    val def = RigEngine.deformStroke(stroke, RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, nextPoses), project.canvasWidth, project.canvasHeight)
+                    drawStrokeItem(def.copy(colorHex = "#3E9BFF", opacity = 0.18f))
                 }
             }
         }
@@ -125,7 +190,7 @@ fun DrawScope.renderSceneDocument(
     // Precompute layer centers for orbit / attach tracks
     val layerCenters = mutableMapOf<String, Pair<Float, Float>>()
     scene.orderedLayers().forEach { layer ->
-        val b = SpatialMapGenerator.computeLayerBounds(layer, project.canvasWidth, project.canvasHeight)
+        val b = SpatialMapGenerator.computeLayerBounds(layer, project.canvasWidth, project.canvasHeight, activePosesByLayer)
         if (b != null) layerCenters[layer.id] = b.centerX to b.centerY
     }
 
@@ -176,6 +241,27 @@ fun DrawScope.renderSceneDocument(
         }) {
             val layerAlpha = (layer.opacity * combinedMotion.opacity).coerceIn(0f, 1f)
 
+            val deformedShapes = layer.sceneShapes.map { shape ->
+                val targetPose = RigEngine.resolveTargetPose(shape.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformShape(shape, targetPose)
+            }
+            val deformedFrameShapes = activeFrame?.layerShapes?.get(layer.id).orEmpty().map { shape ->
+                val targetPose = RigEngine.resolveTargetPose(shape.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformShape(shape, targetPose)
+            }
+            val deformedStrokes = layer.sceneStrokes.map { stroke ->
+                val targetPose = RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformStroke(stroke, targetPose, project.canvasWidth, project.canvasHeight)
+            }
+            val deformedFrameStrokes = activeFrame?.layerDrawings?.get(layer.id).orEmpty().map { stroke ->
+                val targetPose = RigEngine.resolveTargetPose(stroke.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformStroke(stroke, targetPose, project.canvasWidth, project.canvasHeight)
+            }
+            val deformedTexts = layer.sceneTexts.map { tx ->
+                val targetPose = RigEngine.resolveTargetPose(tx.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformText(tx, targetPose)
+            }
+
             if (morphEval != null && morphEval.morphPoints.isNotEmpty()) {
                 val mPath = Path().apply {
                     morphEval.morphPoints.forEachIndexed { idx, pt ->
@@ -188,36 +274,83 @@ fun DrawScope.renderSceneDocument(
                 drawPath(path = mPath, color = Color(0xFF22242C).copy(alpha = layerAlpha), style = Stroke(width = 6f))
             } else {
                 // Scene persistent shapes
-                layer.sceneShapes.forEach { shape ->
-                    drawShapeItem(shape, layerAlpha, isSelected = shape.id == selectedShapeId)
+                deformedShapes.forEach { shape ->
+                    drawShapeItem(shape, layerAlpha, isSelected = shape.id in selectedShapeIds)
                 }
             }
 
             // Frame-specific shapes
-            activeFrame?.layerShapes?.get(layer.id).orEmpty().forEach { shape ->
-                drawShapeItem(shape, layerAlpha, isSelected = shape.id == selectedShapeId)
+            deformedFrameShapes.forEach { shape ->
+                drawShapeItem(shape, layerAlpha, isSelected = shape.id in selectedShapeIds)
             }
 
             // Scene persistent strokes
-            layer.sceneStrokes.forEach { stroke ->
+            deformedStrokes.forEach { stroke ->
                 drawStrokeItem(stroke, layerAlpha, isSelected = stroke.id in selectedStrokeIds)
             }
 
             // Frame-specific strokes
-            activeFrame?.layerDrawings?.get(layer.id).orEmpty().forEach { stroke ->
+            deformedFrameStrokes.forEach { stroke ->
                 drawStrokeItem(stroke, layerAlpha, isSelected = stroke.id in selectedStrokeIds)
             }
 
+            // Combined group/multi-selection outline
+            val selectedGroupIds = buildSet {
+                deformedShapes.filter { it.id in selectedShapeIds && it.groupId != null }.forEach { add(it.groupId!!) }
+                deformedStrokes.filter { it.id in selectedStrokeIds && it.groupId != null }.forEach { add(it.groupId!!) }
+                deformedTexts.filter { it.id in selectedTextIds && it.groupId != null }.forEach { add(it.groupId!!) }
+            }
+            if (selectedGroupIds.isNotEmpty() && evaluateMotionAtMs == null) {
+                selectedGroupIds.forEach { gId ->
+                    val xs = mutableListOf<Float>()
+                    val ys = mutableListOf<Float>()
+                    deformedShapes.filter { it.groupId == gId }.forEach { s ->
+                        xs += min(s.x, s.x + s.width); xs += kotlin.math.max(s.x, s.x + s.width)
+                        ys += min(s.y, s.y + s.height); ys += kotlin.math.max(s.y, s.y + s.height)
+                    }
+                    deformedStrokes.filter { it.groupId == gId }.forEach { st ->
+                        st.points.forEach { p -> xs += p.x; ys += p.y }
+                    }
+                    deformedTexts.filter { it.groupId == gId }.forEach { tx ->
+                        xs += tx.x; ys += tx.y
+                    }
+                    if (xs.isNotEmpty() && ys.isNotEmpty()) {
+                        val gLeft = xs.min() - 18f
+                        val gTop = ys.min() - 18f
+                        val gW = (xs.max() - xs.min() + 36f).coerceAtLeast(36f)
+                        val gH = (ys.max() - ys.min() + 36f).coerceAtLeast(36f)
+                        drawRect(
+                            color = Color(0xFF2EC49A),
+                            topLeft = Offset(gLeft, gTop),
+                            size = Size(gW, gH),
+                            style = Stroke(width = 4.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 10f), 0f))
+                        )
+                    }
+                }
+            }
+
             // 2D Pose skeleton overlay (for character layers)
-            val activePose = activeFrame?.layerPoses?.get(layer.id) ?: layer.skeletonPose
+            val activePose = activePosesByLayer[layer.id]
             if (showPoseSkeleton && activePose != null) {
-                drawSkeletonPose(activePose, layerAlpha)
+                val isEditingThisPose = layer.id == poseHighlightLayerId
+                drawSkeletonPose(
+                    pose = activePose,
+                    layerAlpha = layerAlpha,
+                    highlightedJointName = if (isEditingThisPose) highlightedPoseJoint else null,
+                    showWholeBoundingGuide = isEditingThisPose && highlightWholePose
+                )
             }
 
             // Scene text elements
             if (textMeasurer != null) {
-                layer.sceneTexts.forEach { textItem ->
-                    drawTextItem(textItem, textMeasurer, layerAlpha, isSelected = textItem.id == selectedTextId)
+                deformedTexts.forEach { textItem ->
+                    drawTextItem(
+                        item = textItem,
+                        textMeasurer = textMeasurer,
+                        layerAlpha = layerAlpha,
+                        isSelected = textItem.id in selectedTextIds,
+                        animateAtMs = evaluateMotionAtMs
+                    )
                 }
             }
         }
@@ -226,12 +359,31 @@ fun DrawScope.renderSceneDocument(
         if (particleEval != null && particleEval.particles.isNotEmpty()) {
             val trackCfg = layerTracks.firstOrNull { it.actionType == MotionActionType.PARTICLES }?.particleConfig
             val pColor = parseHexColor(trackCfg?.colorHex, Color(0xFFFFD15C))
-            particleEval.particles.forEach { p ->
-                drawCircle(
-                    color = pColor.copy(alpha = p.alpha * layer.opacity),
-                    radius = p.radius.coerceAtLeast(2f),
-                    center = Offset(p.x, p.y)
-                )
+            particleEval.particles.forEachIndexed { idx, p ->
+                val c = pColor.copy(alpha = (p.alpha * layer.opacity).coerceIn(0f, 1f))
+                if (p.vx != 0f || p.vy != 0f) {
+                    drawLine(
+                        color = c,
+                        start = Offset(p.x, p.y),
+                        end = Offset(p.x + p.vx, p.y + p.vy),
+                        strokeWidth = p.radius.coerceIn(2f, 5f),
+                        cap = StrokeCap.Round
+                    )
+                } else if (p.isLeaf) {
+                    rotate(degrees = (idx * 37f) % 360f, pivot = Offset(p.x, p.y)) {
+                        drawOval(
+                            color = c,
+                            topLeft = Offset(p.x - p.radius, p.y - p.radius * 0.55f),
+                            size = Size(p.radius * 2f, p.radius * 1.1f)
+                        )
+                    }
+                } else {
+                    drawCircle(
+                        color = c,
+                        radius = p.radius.coerceAtLeast(2f),
+                        center = Offset(p.x, p.y)
+                    )
+                }
             }
         }
     }
@@ -380,22 +532,26 @@ fun DrawScope.drawShapeItem(
         when (shape.shapeType) {
             ShapeType.RECTANGLE -> {
                 if (shape.filled && fillColor != null) {
-                    drawRoundRect(color = fillColor, topLeft = Offset(left, top), size = Size(w, h), cornerRadius = CornerRadius(14f, 14f))
+                    drawRoundRect(color = fillColor, topLeft = Offset(left, top), size = Size(w, h), cornerRadius = CornerRadius(12f, 12f))
                 }
-                drawRoundRect(color = strokeColor, topLeft = Offset(left, top), size = Size(w, h), cornerRadius = CornerRadius(14f, 14f), style = Stroke(width = shape.strokeWidth))
+                if (shape.strokeWidth > 0.05f) {
+                    drawRoundRect(color = strokeColor, topLeft = Offset(left, top), size = Size(w, h), cornerRadius = CornerRadius(12f, 12f), style = Stroke(width = shape.strokeWidth))
+                }
             }
             ShapeType.ELLIPSE -> {
                 if (shape.filled && fillColor != null) {
                     drawOval(color = fillColor, topLeft = Offset(left, top), size = Size(w, h))
                 }
-                drawOval(color = strokeColor, topLeft = Offset(left, top), size = Size(w, h), style = Stroke(width = shape.strokeWidth))
+                if (shape.strokeWidth > 0.05f) {
+                    drawOval(color = strokeColor, topLeft = Offset(left, top), size = Size(w, h), style = Stroke(width = shape.strokeWidth))
+                }
             }
             ShapeType.LINE -> {
                 drawLine(
                     color = strokeColor,
                     start = Offset(shape.x, shape.y),
                     end = Offset(shape.x + shape.width, shape.y + shape.height),
-                    strokeWidth = shape.strokeWidth,
+                    strokeWidth = shape.strokeWidth.coerceAtLeast(1f),
                     cap = StrokeCap.Round
                 )
             }
@@ -417,7 +573,9 @@ fun DrawScope.drawShapeItem(
                     close()
                 }
                 if (shape.filled && fillColor != null) drawPath(path, fillColor)
-                drawPath(path, strokeColor, style = Stroke(width = shape.strokeWidth, join = StrokeJoin.Round))
+                if (shape.strokeWidth > 0.05f) {
+                    drawPath(path, strokeColor, style = Stroke(width = shape.strokeWidth, join = StrokeJoin.Round))
+                }
             }
         }
 
@@ -446,16 +604,59 @@ fun DrawScope.drawTextItem(
     item: SceneText,
     textMeasurer: TextMeasurer,
     layerAlpha: Float = 1f,
-    isSelected: Boolean = false
+    isSelected: Boolean = false,
+    animateAtMs: Long? = null
 ) {
-    val alpha = (item.opacity * layerAlpha).coerceIn(0f, 1f)
+    var animAlpha = 1f
+    var animOffsetY = 0f
+    var animScale = 1f
+    var displayText = item.text
+
+    if (animateAtMs != null && item.text.isNotEmpty()) {
+        val tSec = animateAtMs / 1000f
+        when (item.animationStyle) {
+            TextAnimationStyle.FADE_IN -> {
+                animAlpha = (animateAtMs / 550f).coerceIn(0f, 1f)
+            }
+            TextAnimationStyle.SLIDE_UP -> {
+                val p = (animateAtMs / 600f).coerceIn(0f, 1f)
+                val ease = 1f - (1f - p) * (1f - p) * (1f - p)
+                animAlpha = ease
+                animOffsetY = (1f - ease) * 28f
+            }
+            TextAnimationStyle.BOUNCE_IN -> {
+                val p = (animateAtMs / 600f).coerceIn(0f, 1f)
+                val ease = 1f - (1f - p) * (1f - p)
+                animAlpha = ease
+                animScale = 0.88f + 0.12f * ease
+            }
+            TextAnimationStyle.PULSE -> {
+                animScale = 1f + sin(tSec * 3.2f) * 0.03f
+            }
+            TextAnimationStyle.TYPEWRITER -> {
+                val frac = (animateAtMs / 1300f).coerceIn(0f, 1f)
+                val count = (item.text.length * frac).toInt().coerceIn(1, item.text.length)
+                displayText = item.text.substring(0, count)
+            }
+            TextAnimationStyle.NONE -> {}
+        }
+    }
+
+    val alpha = (item.opacity * layerAlpha * animAlpha).coerceIn(0f, 1f)
+    if (alpha <= 0.01f || displayText.isEmpty()) return
+
     val style = TextStyle(
         color = parseHexColor(item.colorHex).copy(alpha = alpha),
-        fontSize = item.fontSizeSp.sp,
+        fontSize = item.fontSizeSp.coerceAtLeast(8f).toSp(),
         fontWeight = FontWeight.Bold
     )
-    val measured = textMeasurer.measure(item.text, style = style)
-    rotate(item.rotationDeg, pivot = Offset(item.x, item.y)) {
+    val measured = textMeasurer.measure(displayText, style = style)
+    val pivot = Offset(item.x + measured.size.width / 2f, item.y - measured.size.height * 0.2f)
+    withTransform({
+        translate(0f, animOffsetY)
+        rotate(item.rotationDeg, pivot = Offset(item.x, item.y))
+        scale(animScale, animScale, pivot = pivot)
+    }) {
         drawText(
             textLayoutResult = measured,
             topLeft = Offset(item.x, item.y - measured.size.height * 0.7f)
@@ -487,18 +688,81 @@ private val POSE_BONES = listOf(
     "rightKnee" to "rightFoot"
 )
 
-fun DrawScope.drawSkeletonPose(pose: SkeletonPose, layerAlpha: Float) {
-    val boneColor = Color(0xFF7E6BFF).copy(alpha = 0.45f * layerAlpha)
-    val jointColor = Color(0xFFFF6B5B).copy(alpha = 0.75f * layerAlpha)
+fun DrawScope.drawSkeletonPose(
+    pose: SkeletonPose,
+    layerAlpha: Float,
+    highlightedJointName: String? = null,
+    showWholeBoundingGuide: Boolean = false
+) {
+    val isEditing = highlightedJointName != null || showWholeBoundingGuide
+    val boneColor = Color(0xFF7E6BFF).copy(alpha = (if (isEditing) 0.72f else 0.45f) * layerAlpha)
+    val jointColor = Color(0xFFFF6B5B).copy(alpha = (if (isEditing) 0.90f else 0.75f) * layerAlpha)
+
+    if (showWholeBoundingGuide && pose.joints.isNotEmpty()) {
+        val rawMinX = pose.joints.values.minOf { it.x } - 30f
+        val rawMaxX = pose.joints.values.maxOf { it.x } + 30f
+        val rawMinY = pose.joints.values.minOf { it.y } - 30f
+        val rawMaxY = pose.joints.values.maxOf { it.y } + 30f
+        val boxW = (rawMaxX - rawMinX).coerceAtLeast(40f)
+        val boxH = (rawMaxY - rawMinY).coerceAtLeast(40f)
+        val cx = (rawMinX + rawMaxX) / 2f
+        val cy = (rawMinY + rawMaxY) / 2f
+        drawRect(
+            color = Color(0xFF7E6BFF).copy(alpha = 0.75f),
+            topLeft = Offset(rawMinX, rawMinY),
+            size = Size(boxW, boxH),
+            style = Stroke(width = 4f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f), 0f))
+        )
+        drawCircle(
+            color = Color(0xFF7E6BFF).copy(alpha = 0.85f),
+            radius = 12f,
+            center = Offset(cx, cy),
+            style = Stroke(width = 3f)
+        )
+        // Top-center rotation handle
+        val rotHandleY = rawMinY - 46f
+        drawLine(
+            color = Color(0xFF7E6BFF).copy(alpha = 0.8f),
+            start = Offset(cx, rawMinY),
+            end = Offset(cx, rotHandleY),
+            strokeWidth = 3.5f
+        )
+        drawCircle(color = Color.White, radius = 15f, center = Offset(cx, rotHandleY))
+        drawCircle(color = Color(0xFF7E6BFF), radius = 15f, center = Offset(cx, rotHandleY), style = Stroke(width = 3.5f))
+        drawCircle(color = Color(0xFF7E6BFF), radius = 5.5f, center = Offset(cx, rotHandleY))
+
+        // Bottom-right scale handle
+        val scaleCorner = Offset(rawMinX + boxW, rawMinY + boxH)
+        drawCircle(color = Color.White, radius = 14f, center = scaleCorner)
+        drawCircle(color = Color(0xFFFF6B5B), radius = 14f, center = scaleCorner, style = Stroke(width = 3.5f))
+        drawCircle(color = Color(0xFFFF6B5B), radius = 5f, center = scaleCorner)
+    }
+
     POSE_BONES.forEach { (a, b) ->
         val pa = pose.joints[a]
         val pb = pose.joints[b]
         if (pa != null && pb != null) {
-            drawLine(color = boneColor, start = Offset(pa.x, pa.y), end = Offset(pb.x, pb.y), strokeWidth = 4f)
+            drawLine(
+                color = boneColor,
+                start = Offset(pa.x, pa.y),
+                end = Offset(pb.x, pb.y),
+                strokeWidth = if (isEditing) 5.5f else 4f
+            )
         }
     }
-    pose.joints.values.forEach { pt ->
-        drawCircle(color = jointColor, radius = 8f, center = Offset(pt.x, pt.y))
+    pose.joints.forEach { (name, pt) ->
+        val isHighlighted = name == highlightedJointName
+        if (isHighlighted) {
+            drawCircle(color = Color(0xFF7E6BFF).copy(alpha = 0.24f), radius = 26f, center = Offset(pt.x, pt.y))
+            drawCircle(color = Color.White, radius = 15f, center = Offset(pt.x, pt.y))
+            drawCircle(color = Color(0xFF7E6BFF), radius = 15f, center = Offset(pt.x, pt.y), style = Stroke(width = 4f))
+            drawCircle(color = jointColor, radius = 9.5f, center = Offset(pt.x, pt.y))
+        } else {
+            if (isEditing) {
+                drawCircle(color = Color.White, radius = 10.5f, center = Offset(pt.x, pt.y))
+            }
+            drawCircle(color = jointColor, radius = 8f, center = Offset(pt.x, pt.y))
+        }
     }
 }
 

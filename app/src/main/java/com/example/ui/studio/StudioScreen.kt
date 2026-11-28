@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.rounded.Create
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FormatColorFill
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Gesture
 import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.IosShare
@@ -76,6 +79,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -152,17 +156,23 @@ fun StudioScreen(
         }
     }
 
-    BackHandler(enabled = state.activeSheet != StudioSheet.NONE || state.isRecordingPathForTrackId != null) {
+    BackHandler(
+        enabled = state.activeSheet != StudioSheet.NONE ||
+            state.isRecordingPathForTrackId != null ||
+            state.isCanvasFullscreen
+    ) {
         if (state.activeSheet != StudioSheet.NONE) {
             viewModel.closeSheet()
         } else if (state.isRecordingPathForTrackId != null) {
             viewModel.setTool(DrawingTool.PEN)
+        } else if (state.isCanvasFullscreen) {
+            viewModel.setCanvasFullscreen(false)
         }
     }
 
     Scaffold(
-        containerColor = PaperCream,
-        contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = if (state.isCanvasFullscreen) PaperLinen else PaperCream,
+        contentWindowInsets = if (state.isCanvasFullscreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         Column(
@@ -170,170 +180,201 @@ fun StudioScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 1. Top Studio Toolbar
-            StudioTopBar(
-                state = state,
-                onBack = {
-                    viewModel.flushSave()
-                    onBackToLibrary()
-                },
-                onOpenPlanner = { viewModel.openSheet(StudioSheet.SCENE_PLANNER) },
-                onUndo = { viewModel.undo() },
-                onRedo = { viewModel.redo() },
-                onExport = {
-                    viewModel.flushSave()
-                    state.project?.id?.let(onOpenExport)
-                },
-                showMoreMenu = showMoreMenu,
-                onToggleMoreMenu = { showMoreMenu = it },
-                onOpenAiDescribe = { viewModel.openSheet(StudioSheet.AI_INSPECTOR) },
-                onOpenBackdrop = { viewModel.openSheet(StudioSheet.BACKGROUND) },
-                onOpenMotion = { viewModel.openSheet(StudioSheet.MOTION_ACTION) },
-                onToggleAdvanced = { viewModel.toggleAdvancedMode() },
-                onClearLayer = { viewModel.clearActiveLayerOrFrame() },
-                onRequestClearAll = { showClearConfirmDialog = true },
-                onRenameProject = { showRenameDialog = true },
-                onReplayTutorial = { viewModel.startTutorial() }
-            )
+            if (!state.isCanvasFullscreen) {
+                // 1. Top Studio Toolbar
+                StudioTopBar(
+                    state = state,
+                    onBack = {
+                        viewModel.flushSave()
+                        onBackToLibrary()
+                    },
+                    onOpenPlanner = { viewModel.openSheet(StudioSheet.SCENE_PLANNER) },
+                    onUndo = { viewModel.undo() },
+                    onRedo = { viewModel.redo() },
+                    onExport = {
+                        viewModel.flushSave()
+                        state.project?.id?.let(onOpenExport)
+                    },
+                    showMoreMenu = showMoreMenu,
+                    onToggleMoreMenu = { showMoreMenu = it },
+                    onOpenAiDescribe = { viewModel.openSheet(StudioSheet.AI_INSPECTOR) },
+                    onOpenBackdrop = { viewModel.openSheet(StudioSheet.BACKGROUND) },
+                    onOpenMotion = { viewModel.openSheet(StudioSheet.MOTION_ACTION) },
+                    onToggleFullscreen = { viewModel.toggleCanvasFullscreen() },
+                    onToggleAdvanced = { viewModel.toggleAdvancedMode() },
+                    onClearLayer = { viewModel.clearActiveLayerOrFrame() },
+                    onRequestClearAll = { showClearConfirmDialog = true },
+                    onRenameProject = { showRenameDialog = true },
+                    onReplayTutorial = { viewModel.startTutorial() }
+                )
 
-            // 2. Mode Switcher (Scene Layout | Draw Frames | Motion Studio)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(PaperCream)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = PaperLinen,
-                    border = BorderStroke(1.dp, PaperBorder),
-                    modifier = Modifier.weight(1f)
+                // 2. Mode Switcher (Scene Layout | Draw Frames | Motion Studio)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(PaperCream)
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        modifier = Modifier.padding(3.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = PaperLinen,
+                        border = BorderStroke(1.dp, PaperBorder),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        StudioMode.entries.forEach { mode ->
-                            val selected = state.activeMode == mode
-                            Surface(
-                                shape = RoundedCornerShape(11.dp),
-                                color = if (selected) PaperSheet else Color.Transparent,
-                                shadowElevation = if (selected) 1.dp else 0.dp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { viewModel.setMode(mode) }
-                                    .testTag("mode_tab_${mode.name.lowercase()}")
-                            ) {
-                                Text(
-                                    mode.label,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (selected) StudioCoral else InkSlate,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp)
-                                )
+                        Row(
+                            modifier = Modifier.padding(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            StudioMode.entries.forEach { mode ->
+                                val selected = state.activeMode == mode
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (selected) PaperSheet else Color.Transparent,
+                                    shadowElevation = if (selected) 1.dp else 0.dp,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { viewModel.setMode(mode) }
+                                        .testTag("mode_tab_${mode.name.lowercase()}")
+                                ) {
+                                    Text(
+                                        mode.label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) StudioCoral else InkSlate,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.width(6.dp))
+
+                    // Quick AI Describe Sparkle pill
+                    Surface(
+                        shape = CircleShape,
+                        color = StudioLavenderSoft,
+                        border = BorderStroke(1.dp, PaperBorder),
+                        modifier = Modifier
+                            .clickable { viewModel.openSheet(StudioSheet.AI_INSPECTOR) }
+                            .testTag("studio_ai_describe_pill")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = "Describe for AI", tint = StudioLavender, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("AI Note", style = MaterialTheme.typography.labelMedium, color = StudioLavender)
+                        }
+                    }
+                }
+
+                // Optional Beginner Tutorial Strip (compact, skippable; hidden during Pose Editor or Fullscreen)
+                AnimatedVisibility(visible = state.tutorialStep != null && state.activeSheet != StudioSheet.POSE_EDITOR) {
+                    val step = state.tutorialStep ?: 0
+                    Surface(
+                        color = StudioButterSoft,
+                        border = BorderStroke(1.dp, PaperBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                TUTORIAL_TIPS.getOrElse(step) { TUTORIAL_TIPS.last() },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = InkCharcoal,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { viewModel.advanceTutorial() }) {
+                                Text(if (step >= 9) "Finish" else "Next")
+                            }
+                            IconButton(onClick = { viewModel.dismissTutorial() }, modifier = Modifier.size(30.dp)) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Dismiss tutorial", modifier = Modifier.size(16.dp))
                             }
                         }
                     }
                 }
-
-                Spacer(Modifier.width(8.dp))
-
-                // Quick AI Describe Sparkle pill
-                Surface(
-                    shape = CircleShape,
-                    color = StudioLavenderSoft,
-                    border = BorderStroke(1.dp, PaperBorder),
-                    modifier = Modifier
-                        .clickable { viewModel.openSheet(StudioSheet.AI_INSPECTOR) }
-                        .testTag("studio_ai_describe_pill")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.AutoAwesome, contentDescription = "Describe for AI", tint = StudioLavender, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("AI Note", style = MaterialTheme.typography.labelMedium, color = StudioLavender)
-                    }
-                }
             }
 
-            // Optional Beginner Tutorial Strip (compact, skippable)
-            AnimatedVisibility(visible = state.tutorialStep != null) {
-                val step = state.tutorialStep ?: 0
-                Surface(
-                    color = StudioButterSoft,
-                    border = BorderStroke(1.dp, PaperBorder),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            TUTORIAL_TIPS.getOrElse(step) { TUTORIAL_TIPS.last() },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = InkCharcoal,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = { viewModel.advanceTutorial() }) {
-                            Text(if (step >= 9) "Finish" else "Next")
-                        }
-                        IconButton(onClick = { viewModel.dismissTutorial() }, modifier = Modifier.size(30.dp)) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Dismiss tutorial", modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            }
-
-            // 3. Adaptive Main Canvas + Floating Tool Dock
+            // 3. Adaptive Main Canvas + Docked Bottom Workspace
             BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                val isWide = maxWidth >= 680.dp
+                val workspaceHeight = maxHeight
+                val maxPosePanelHeight = (workspaceHeight * 0.52f).coerceIn(170.dp, 350.dp)
 
-                StudioCanvas(
-                    state = state,
-                    viewModel = viewModel,
-                    modifier = Modifier.fillMaxSize()
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        val isWide = maxWidth >= 680.dp
 
-                // Floating Tool Dock (Vertical rail on left in wide/landscape, compact bottom pill in portrait)
-                if (isWide) {
-                    ToolDockVertical(
-                        state = state,
-                        viewModel = viewModel,
-                        showShapesMenu = showShapesMenu,
-                        onToggleShapes = { showShapesMenu = it },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 10.dp)
-                    )
-                } else {
-                    ToolDockHorizontal(
-                        state = state,
-                        viewModel = viewModel,
-                        showShapesMenu = showShapesMenu,
-                        onToggleShapes = { showShapesMenu = it },
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    )
+                        StudioCanvas(
+                            state = state,
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Floating Tool Dock (hidden during 2D Pose Editor or when tools hidden in Fullscreen)
+                        if (state.activeSheet != StudioSheet.POSE_EDITOR && !(state.isCanvasFullscreen && state.hideToolsInFullscreen)) {
+                            val dockInsetsModifier = if (state.isCanvasFullscreen) {
+                                Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+                            } else {
+                                Modifier
+                            }
+                            if (isWide) {
+                                ToolDockVertical(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    showShapesMenu = showShapesMenu,
+                                    onToggleShapes = { showShapesMenu = it },
+                                    modifier = dockInsetsModifier
+                                        .align(Alignment.CenterStart)
+                                        .padding(start = 10.dp)
+                                )
+                            } else {
+                                ToolDockHorizontal(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    showShapesMenu = showShapesMenu,
+                                    onToggleShapes = { showShapesMenu = it },
+                                    modifier = dockInsetsModifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Docked 2D Pose Editor OR Collapsible Bottom Timeline & Tracks Workspace
+                    if (state.activeSheet == StudioSheet.POSE_EDITOR) {
+                        PoseEditorPanel(
+                            state = state,
+                            viewModel = viewModel,
+                            onDismiss = { viewModel.closeSheet() },
+                            maxPanelHeight = maxPosePanelHeight,
+                            modifier = Modifier.navigationBarsPadding()
+                        )
+                    } else if (!state.isCanvasFullscreen) {
+                        TimelinePanel(
+                            state = state,
+                            viewModel = viewModel,
+                            modifier = Modifier.navigationBarsPadding()
+                        )
+                    }
                 }
             }
-
-            // 4. Collapsible Bottom Timeline & Tracks Workspace
-            TimelinePanel(
-                state = state,
-                viewModel = viewModel,
-                modifier = Modifier.navigationBarsPadding()
-            )
         }
     }
 
@@ -345,7 +386,7 @@ fun StudioScreen(
         StudioSheet.MOTION_ACTION -> MotionActionSheet(state, viewModel, onDismiss = { viewModel.closeSheet() })
         StudioSheet.SCENE_PLANNER -> ScenePlannerSheet(state, viewModel, onDismiss = { viewModel.closeSheet() })
         StudioSheet.COLOR_PICKER -> ColorAndBrushSheet(state, viewModel, onDismiss = { viewModel.closeSheet() })
-        StudioSheet.POSE_EDITOR -> PoseEditorSheet(state, viewModel, onDismiss = { viewModel.closeSheet() })
+        StudioSheet.POSE_EDITOR -> {}
         StudioSheet.NONE -> {}
     }
 
@@ -411,6 +452,7 @@ private fun StudioTopBar(
     onOpenAiDescribe: () -> Unit,
     onOpenBackdrop: () -> Unit,
     onOpenMotion: () -> Unit,
+    onToggleFullscreen: () -> Unit,
     onToggleAdvanced: () -> Unit,
     onClearLayer: () -> Unit,
     onRequestClearAll: () -> Unit,
@@ -421,13 +463,14 @@ private fun StudioTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(PaperSheet)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .testTag("studio_top_bar"),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
             onClick = onBack,
             modifier = Modifier
-                .size(40.dp)
+                .size(34.dp)
                 .testTag("studio_back_button")
         ) {
             Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back to library", tint = InkCharcoal)
@@ -438,40 +481,60 @@ private fun StudioTopBar(
                 .weight(1f)
                 .clickable(onClick = onOpenPlanner)
                 .padding(horizontal = 4.dp)
+                .testTag("studio_scene_planner_trigger")
         ) {
-            Text(
-                state.project?.name ?: "FramePilot",
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
-                    state.activeScene?.name ?: "Scene 1",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = StudioLavender,
+                    state.project?.name ?: "FramePilot",
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 Surface(
                     shape = CircleShape,
-                    color = if (state.saveStatus == SaveStatus.SAVED) StudioMintSoft else StudioButterSoft
+                    color = if (state.saveStatus == SaveStatus.SAVED) StudioMintSoft else StudioButterSoft,
+                    modifier = Modifier
+                        .widthIn(min = 60.dp)
+                        .testTag("studio_save_status_pill")
                 ) {
                     Text(
                         state.saveStatus.label,
                         style = MaterialTheme.typography.labelSmall,
                         color = if (state.saveStatus == SaveStatus.SAVED) StudioMint else InkCharcoal,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
                 }
             }
+            val orderedScenes = state.project?.scenes?.sortedBy { it.orderIndex }.orEmpty()
+            val sceneIdx = orderedScenes.indexOfFirst { it.id == state.activeScene?.id }
+            val sceneLabel = if (orderedScenes.size > 1 && sceneIdx >= 0) {
+                "${sceneIdx + 1}/${orderedScenes.size} · ${state.activeScene?.name ?: "Scene"}"
+            } else {
+                state.activeScene?.name ?: "Scene 1"
+            }
+            Text(
+                sceneLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = StudioLavender,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         IconButton(
             onClick = onUndo,
             enabled = state.canUndo,
             modifier = Modifier
-                .size(40.dp)
+                .size(34.dp)
                 .testTag("studio_undo_button")
         ) {
             Icon(
@@ -485,7 +548,7 @@ private fun StudioTopBar(
             onClick = onRedo,
             enabled = state.canRedo,
             modifier = Modifier
-                .size(40.dp)
+                .size(34.dp)
                 .testTag("studio_redo_button")
         ) {
             Icon(
@@ -498,7 +561,7 @@ private fun StudioTopBar(
         IconButton(
             onClick = onRequestClearAll,
             modifier = Modifier
-                .size(40.dp)
+                .size(34.dp)
                 .testTag("studio_clear_canvas_button")
         ) {
             Icon(
@@ -530,7 +593,7 @@ private fun StudioTopBar(
             IconButton(
                 onClick = { onToggleMoreMenu(true) },
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(34.dp)
                     .testTag("studio_more_button")
             ) {
                 Icon(Icons.Rounded.MoreVert, contentDescription = "Studio options")
@@ -550,6 +613,11 @@ private fun StudioTopBar(
                     text = { Text("Describe Layer for AI") },
                     leadingIcon = { Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = StudioLavender) },
                     onClick = { onToggleMoreMenu(false); onOpenAiDescribe() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Full Screen Drawing Canvas") },
+                    leadingIcon = { Icon(Icons.Rounded.Fullscreen, contentDescription = null) },
+                    onClick = { onToggleMoreMenu(false); onToggleFullscreen() }
                 )
                 DropdownMenuItem(
                     text = { Text(if (state.advancedMode) "Switch to Simple Mode" else "Enable Advanced Controls") },

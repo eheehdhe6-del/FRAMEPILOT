@@ -7,6 +7,8 @@ import com.example.domain.model.FramePilotProject
 import com.example.domain.model.Layer
 import com.example.domain.model.LayerCategory
 import com.example.domain.model.Scene
+import com.example.domain.model.SceneTransition
+import com.example.domain.model.SceneTransitionType
 import com.example.engine.TimelineEngine
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.Types
@@ -56,7 +58,8 @@ object ProjectSerializer {
                 scene.copy(
                     orderIndex = sIdx,
                     layers = normalizedLayers,
-                    frames = normalizedFrames
+                    frames = normalizedFrames,
+                    transitionOut = SceneTransition(type = SceneTransitionType.CUT, durationMs = 0L)
                 )
             }
         return project.copy(

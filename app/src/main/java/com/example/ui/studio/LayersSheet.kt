@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -80,7 +82,7 @@ import com.example.ui.theme.StudioSky
 import com.example.ui.theme.StudioSkySoft
 import com.example.ui.theme.StudioSwatches
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LayersSheet(
     state: StudioUiState,
@@ -142,6 +144,10 @@ fun LayersSheet(
 
             // Opacity control for selected layer
             state.selectedLayer?.let { sel ->
+                val riggedCount = sel.sceneShapes.count { it.rigAttachment != null } +
+                    sel.sceneStrokes.count { it.rigAttachment != null }
+                val unboundCount = sel.sceneShapes.count { it.rigAttachment == null } +
+                    sel.sceneStrokes.count { it.rigAttachment == null }
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = PaperSheet,
@@ -156,12 +162,23 @@ fun LayersSheet(
                             Text("Selected: ${sel.name}", style = MaterialTheme.typography.titleSmall)
                             Text("${(sel.opacity * 100).toInt()}% opacity", style = MaterialTheme.typography.labelSmall, color = InkSlate)
                         }
+                        if (sel.groups.isNotEmpty() || riggedCount > 0) {
+                            Text(
+                                "${sel.groups.size} group(s) · $riggedCount rigged element(s)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = StudioLavender
+                            )
+                        }
                         Slider(
                             value = sel.opacity,
                             onValueChange = { viewModel.setLayerOpacity(sel.id, it) },
                             valueRange = 0.05f..1f
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
                             TextButton(onClick = { viewModel.openSheet(StudioSheet.AI_INSPECTOR) }) {
                                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp), tint = StudioLavender)
                                 Spacer(Modifier.width(4.dp))
@@ -173,6 +190,24 @@ fun LayersSheet(
                                     modifier = Modifier.testTag("edit_2d_pose_button")
                                 ) {
                                     Text("Edit 2D Pose", color = StudioMint)
+                                }
+                                if (unboundCount > 0) {
+                                    TextButton(
+                                        onClick = { viewModel.autoBindLayerToRig(sel.id) },
+                                        modifier = Modifier.testTag("layers_auto_rig_button")
+                                    ) {
+                                        Text("Auto-Attach ($unboundCount)", color = StudioLavender)
+                                    }
+                                }
+                            } else {
+                                TextButton(
+                                    onClick = {
+                                        viewModel.ensureSkeletonRigOnLayer(sel.id)
+                                        viewModel.openSheet(StudioSheet.POSE_EDITOR)
+                                    },
+                                    modifier = Modifier.testTag("add_2d_rig_button")
+                                ) {
+                                    Text("Add 2D Rig", color = StudioMint)
                                 }
                             }
                         }

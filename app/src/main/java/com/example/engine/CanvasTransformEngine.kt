@@ -34,7 +34,7 @@ object CanvasTransformEngine {
         docHeight: Int,
         viewportWidth: Float,
         viewportHeight: Float,
-        paddingPx: Float = 48f
+        paddingPx: Float = 12f
     ): CanvasViewportState {
         if (viewportWidth <= 0f || viewportHeight <= 0f || docWidth <= 0 || docHeight <= 0) {
             return CanvasViewportState()

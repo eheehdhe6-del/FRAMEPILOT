@@ -22,19 +22,29 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.MergeType
+import androidx.compose.material.icons.rounded.AccessibilityNew
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.MergeType
+import androidx.compose.material.icons.rounded.OpenWith
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -56,6 +66,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.EasingType
 import com.example.domain.model.MotionActionType
@@ -65,7 +77,6 @@ import com.example.domain.model.MotionTrack
 import com.example.domain.model.OrbitConfig
 import com.example.domain.model.OrbitDirection
 import com.example.domain.model.ParticleConfig
-import com.example.domain.model.SceneTransitionType
 import com.example.domain.model.SemanticInfo
 import com.example.domain.model.ShapeMorphConfig
 import com.example.domain.model.ShapeType
@@ -86,6 +97,7 @@ import com.example.ui.theme.StudioMint
 import com.example.ui.theme.StudioMintSoft
 import com.example.ui.theme.StudioSwatches
 import java.util.UUID
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -616,95 +628,504 @@ fun MotionActionSheet(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PoseEditorSheet(
+fun PoseEditorPanel(
     state: StudioUiState,
     viewModel: StudioViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    maxPanelHeight: Dp = 200.dp
 ) {
+    val project = state.project ?: return
     val layer = state.selectedLayer ?: return
-    val pose = layer.skeletonPose
-    val joints = pose?.joints ?: defaultStickmanJoints(540f, 960f)
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var selectedJoint by remember { mutableStateOf("rightHand") }
+    val pose = state.activePoseFor(layer)
+    val defaultJoints = remember(project.canvasWidth, project.canvasHeight) {
+        defaultStickmanJoints(project.canvasWidth / 2f, project.canvasHeight / 2f)
+    }
+    val joints = pose?.joints?.takeIf { it.isNotEmpty() } ?: defaultJoints
+    val selectedJoint = state.selectedPoseJoint.takeIf { it in joints } ?: joints.keys.first()
     val pt = joints[selectedJoint] ?: joints.values.first()
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = PaperCream
+    val (wholeCenterX, wholeCenterY) = PoseGeometry.computeCenter(joints)
+    val wholeScale = PoseGeometry.computeScale(joints)
+    val wholeAngleDeg = PoseGeometry.computeAngleDeg(joints)
+
+    var sliderUndoRecorded by remember(state.poseEditWholeBody, selectedJoint, state.selectedFrameId) {
+        mutableStateOf(false)
+    }
+
+    val canvasW = project.canvasWidth.toFloat().coerceAtLeast(100f)
+    val canvasH = project.canvasHeight.toFloat().coerceAtLeast(100f)
+    val isEditingFramePose = state.activeMode == com.example.domain.model.StudioMode.DRAW_FRAMES ||
+        state.selectedFrame?.layerPoses?.containsKey(layer.id) == true
+    val frameSubtitle = if (isEditingFramePose) {
+        val frames = state.activeScene?.orderedFrames().orEmpty()
+        val fIdx = frames.indexOfFirst { it.id == state.selectedFrameId }.coerceAtLeast(0)
+        " · Frame ${fIdx + 1}"
+    } else ""
+    val unboundArtCount = layer.sceneShapes.count { it.rigAttachment == null } +
+        layer.sceneStrokes.count { it.rigAttachment == null }
+
+    Surface(
+        color = PaperSheet,
+        border = BorderStroke(1.dp, PaperBorder),
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        shadowElevation = 8.dp,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("pose_editor_panel")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = maxPanelHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp)
-                .padding(bottom = 24.dp)
-                .navigationBarsPadding(),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("2D Character Pose Keyframe", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Named joint coordinates for stick-figure posing & AI motion plans (2D pose helper, not a skinned deformation rig).",
-                style = MaterialTheme.typography.bodySmall,
-                color = InkSlate
-            )
-
+            // Roomy Header: Title + Reset + Done
             Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                joints.keys.sorted().forEach { name ->
-                    FilterChip(
-                        selected = selectedJoint == name,
-                        onClick = { selectedJoint = name },
-                        label = { Text(name) }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "2D Pose${frameSubtitle}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Text(
+                        "${layer.name} · Drag canvas or handles",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = InkSlate,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { viewModel.resetLayerPoseToDefault(layer.id) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .height(36.dp)
+                        .testTag("pose_reset_default_button"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Reset", style = MaterialTheme.typography.labelMedium)
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = StudioCoral),
+                    modifier = Modifier
+                        .height(36.dp)
+                        .testTag("pose_editor_done_button"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Done", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
 
-            Text("$selectedJoint X: ${pt.x.toInt()} px", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("pose_joint_x_label"))
-            Slider(
-                value = pt.x,
-                onValueChange = { newX -> viewModel.updateLayerPoseJoint(layer.id, selectedJoint, newX, pt.y) },
-                valueRange = 50f..(state.project?.canvasWidth ?: 1080).toFloat(),
-                modifier = Modifier.testTag("pose_joint_x_slider")
-            )
-            Text("$selectedJoint Y: ${pt.y.toInt()} px", style = MaterialTheme.typography.labelMedium, modifier = Modifier.testTag("pose_joint_y_label"))
-            Slider(
-                value = pt.y,
-                onValueChange = { newY -> viewModel.updateLayerPoseJoint(layer.id, selectedJoint, pt.x, newY) },
-                valueRange = 50f..(state.project?.canvasHeight ?: 1920).toFloat(),
-                modifier = Modifier.testTag("pose_joint_y_slider")
-            )
-
-            OutlinedButton(
-                onClick = { viewModel.resetLayerPoseToDefault(layer.id) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("pose_reset_default_button"),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Rounded.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Reset to Default")
+            if (unboundArtCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = StudioLavenderSoft,
+                    border = BorderStroke(1.dp, StudioLavender.copy(alpha = 0.45f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.autoBindLayerToRig(layer.id) }
+                        .testTag("pose_auto_bind_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "$unboundArtCount shape/stroke(s) on '${layer.name}' not rigged yet",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = InkCharcoal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Auto-Attach Art",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = StudioLavender
+                        )
+                    }
+                }
             }
 
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("pose_editor_done_button"),
-                shape = RoundedCornerShape(14.dp)
+            // Spacious Segmented Mode Switch: Whole Body vs Single Joint
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = PaperLinen,
+                border = BorderStroke(1.dp, PaperBorder),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Done")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (state.poseEditWholeBody) StudioLavenderSoft else PaperSheet.copy(alpha = 0f),
+                        border = if (state.poseEditWholeBody) BorderStroke(1.dp, StudioLavender.copy(alpha = 0.45f)) else null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { viewModel.setPoseEditWholeBody(true) }
+                            .testTag("pose_mode_whole_body")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.OpenWith,
+                                contentDescription = null,
+                                tint = if (state.poseEditWholeBody) StudioLavender else InkSlate,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "Whole Body",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (state.poseEditWholeBody) FontWeight.Bold else FontWeight.Medium,
+                                color = if (state.poseEditWholeBody) StudioLavender else InkSlate,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (!state.poseEditWholeBody) StudioCoralSoft else PaperSheet.copy(alpha = 0f),
+                        border = if (!state.poseEditWholeBody) BorderStroke(1.dp, StudioCoral.copy(alpha = 0.45f)) else null,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { viewModel.setPoseEditWholeBody(false) }
+                            .testTag("pose_mode_single_joint")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.AccessibilityNew,
+                                contentDescription = null,
+                                tint = if (!state.poseEditWholeBody) StudioCoral else InkSlate,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "Single Joint",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (!state.poseEditWholeBody) FontWeight.Bold else FontWeight.Medium,
+                                color = if (!state.poseEditWholeBody) StudioCoral else InkSlate,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (state.poseEditWholeBody) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = PaperLinen.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, PaperBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Position X & Y
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Character X: ${wholeCenterX.toInt()} px",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    modifier = Modifier.testTag("pose_whole_x_label")
+                                )
+                                Slider(
+                                    value = wholeCenterX.coerceIn(0f, canvasW),
+                                    onValueChange = { newCx ->
+                                        viewModel.setLayerPosePosition(
+                                            layerId = layer.id,
+                                            targetCenterX = newCx,
+                                            targetCenterY = wholeCenterY,
+                                            recordUndo = !sliderUndoRecorded
+                                        )
+                                        sliderUndoRecorded = true
+                                    },
+                                    onValueChangeFinished = { sliderUndoRecorded = false },
+                                    valueRange = 0f..canvasW,
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("pose_whole_x_slider")
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Character Y: ${wholeCenterY.toInt()} px",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    modifier = Modifier.testTag("pose_whole_y_label")
+                                )
+                                Slider(
+                                    value = wholeCenterY.coerceIn(0f, canvasH),
+                                    onValueChange = { newCy ->
+                                        viewModel.setLayerPosePosition(
+                                            layerId = layer.id,
+                                            targetCenterX = wholeCenterX,
+                                            targetCenterY = newCy,
+                                            recordUndo = !sliderUndoRecorded
+                                        )
+                                        sliderUndoRecorded = true
+                                    },
+                                    onValueChangeFinished = { sliderUndoRecorded = false },
+                                    valueRange = 0f..canvasH,
+                                    modifier = Modifier
+                                        .height(34.dp)
+                                        .testTag("pose_whole_y_slider")
+                                )
+                            }
+                        }
+
+                        // Whole Skeleton Size (Scale)
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Skeleton Size: ${(wholeScale * 100f).roundToInt()}%",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.testTag("pose_whole_scale_label")
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = PaperSheet,
+                                    border = BorderStroke(1.dp, PaperBorder),
+                                    modifier = Modifier
+                                        .clickable {
+                                            viewModel.finishPoseTransformSession()
+                                            viewModel.setLayerPoseScale(layer.id, 1f, recordUndo = true)
+                                            viewModel.finishPoseTransformSession()
+                                        }
+                                        .testTag("pose_whole_scale_reset")
+                                ) {
+                                    Text(
+                                        "100%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = StudioCoral,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = wholeScale.coerceIn(0.25f, 3.0f),
+                                onValueChange = { newScale ->
+                                    viewModel.setLayerPoseScale(
+                                        layerId = layer.id,
+                                        targetScale = newScale,
+                                        recordUndo = !sliderUndoRecorded
+                                    )
+                                    sliderUndoRecorded = true
+                                },
+                                onValueChangeFinished = {
+                                    sliderUndoRecorded = false
+                                    viewModel.finishPoseTransformSession()
+                                },
+                                valueRange = 0.25f..3.0f,
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("pose_whole_scale_slider")
+                            )
+                        }
+
+                        // Whole Skeleton Angle (Rotation)
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Skeleton Angle: ${wholeAngleDeg.roundToInt()}°",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.testTag("pose_whole_angle_label")
+                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = PaperSheet,
+                                    border = BorderStroke(1.dp, PaperBorder),
+                                    modifier = Modifier
+                                        .clickable {
+                                            viewModel.finishPoseTransformSession()
+                                            viewModel.setLayerPoseAngle(layer.id, 0f, recordUndo = true)
+                                            viewModel.finishPoseTransformSession()
+                                        }
+                                        .testTag("pose_whole_angle_reset")
+                                ) {
+                                    Text(
+                                        "0°",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = StudioLavender,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = wholeAngleDeg.coerceIn(-180f, 180f),
+                                onValueChange = { newAngle ->
+                                    viewModel.setLayerPoseAngle(
+                                        layerId = layer.id,
+                                        targetAngleDeg = newAngle,
+                                        recordUndo = !sliderUndoRecorded
+                                    )
+                                    sliderUndoRecorded = true
+                                },
+                                onValueChangeFinished = {
+                                    sliderUndoRecorded = false
+                                    viewModel.finishPoseTransformSession()
+                                },
+                                valueRange = -180f..180f,
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("pose_whole_angle_slider")
+                            )
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = PaperLinen.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, PaperBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            joints.keys.sorted().forEach { name ->
+                                val isJointSelected = selectedJoint == name
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isJointSelected) StudioCoralSoft else PaperSheet,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isJointSelected) StudioCoral else PaperBorder
+                                    ),
+                                    modifier = Modifier
+                                        .clickable { viewModel.selectPoseJoint(name) }
+                                        .testTag("pose_joint_chip_$name")
+                                ) {
+                                    Text(
+                                        name,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isJointSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isJointSelected) StudioCoral else InkCharcoal,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "$selectedJoint X: ${pt.x.toInt()} px",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.testTag("pose_joint_x_label")
+                            )
+                            Slider(
+                                value = pt.x.coerceIn(0f, canvasW),
+                                onValueChange = { newX ->
+                                    viewModel.updateLayerPoseJoint(
+                                        layerId = layer.id,
+                                        jointName = selectedJoint,
+                                        x = newX,
+                                        y = pt.y,
+                                        recordUndo = !sliderUndoRecorded
+                                    )
+                                    sliderUndoRecorded = true
+                                },
+                                onValueChangeFinished = { sliderUndoRecorded = false },
+                                valueRange = 0f..canvasW,
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("pose_joint_x_slider")
+                            )
+                        }
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "$selectedJoint Y: ${pt.y.toInt()} px",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.testTag("pose_joint_y_label")
+                            )
+                            Slider(
+                                value = pt.y.coerceIn(0f, canvasH),
+                                onValueChange = { newY ->
+                                    viewModel.updateLayerPoseJoint(
+                                        layerId = layer.id,
+                                        jointName = selectedJoint,
+                                        x = pt.x,
+                                        y = newY,
+                                        recordUndo = !sliderUndoRecorded
+                                    )
+                                    sliderUndoRecorded = true
+                                },
+                                onValueChangeFinished = { sliderUndoRecorded = false },
+                                valueRange = 0f..canvasH,
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("pose_joint_y_slider")
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ScenePlannerSheet(
     state: StudioUiState,
@@ -714,13 +1135,13 @@ fun ScenePlannerSheet(
     val project = state.project ?: return
     val scene = state.activeScene ?: return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val orderedScenes = project.scenes.sortedBy { it.orderIndex }
 
     var durationSec by remember(scene.id) { mutableFloatStateOf(scene.durationMs / 1000f) }
     var voiceover by remember(scene.id) { mutableStateOf(scene.audioPlan.voiceoverText) }
     var captions by remember(scene.id) { mutableStateOf(scene.audioPlan.captionsText) }
     var music by remember(scene.id) { mutableStateOf(scene.audioPlan.musicTrackNote) }
     var pauses by remember(scene.id) { mutableStateOf(scene.audioPlan.pausesAndSilenceNote) }
-    var transition by remember(scene.id) { mutableStateOf(scene.transitionOut.type) }
     var notes by remember(scene.id) { mutableStateOf(scene.notes) }
 
     ModalBottomSheet(
@@ -742,7 +1163,7 @@ fun ScenePlannerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("Reel Scenes & Audio Plan", style = MaterialTheme.typography.headlineSmall)
                     Text(
                         "Total Reel Duration: ${String.format("%.1fs", project.totalDurationMs / 1000f)} across ${project.scenes.size} scene(s)",
@@ -750,39 +1171,186 @@ fun ScenePlannerSheet(
                         color = StudioLavender
                     )
                 }
-                OutlinedButton(onClick = { viewModel.addNewScene("Scene ${project.scenes.size + 1}", 3000L) }) {
+                OutlinedButton(
+                    onClick = { viewModel.addNewScene("Scene ${orderedScenes.size + 1}", 3000L) },
+                    modifier = Modifier.testTag("planner_add_scene_button")
+                ) {
                     Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Scene")
                 }
             }
 
-            // Scene switcher chips
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Customizable Scene Sequence Organizer (Swap / Duplicate / Insert Cut / Delete)
+            Text("Scene Sequence (Hard Cuts)", style = MaterialTheme.typography.titleSmall)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                orderedScenes.forEachIndexed { idx, sc ->
+                    val isSelected = sc.id == scene.id
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isSelected) StudioCoralSoft else PaperSheet,
+                        border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) StudioCoral else PaperBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { viewModel.selectScene(sc.id) }
+                                    .testTag("scene_chip_${sc.id}")
+                            ) {
+                                Text(
+                                    "${idx + 1}. ${sc.name}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = InkCharcoal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    "${String.format("%.1fs", sc.effectiveDurationMs(project.fps) / 1000f)} · ${sc.frames.size} frame(s) · Hard Cut",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = InkSlate
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { viewModel.moveScene(sc.id, -1) },
+                                enabled = idx > 0,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .testTag("scene_move_up_${sc.id}")
+                            ) {
+                                Icon(
+                                    Icons.Rounded.ArrowUpward,
+                                    contentDescription = "Move scene earlier",
+                                    tint = if (idx > 0) InkCharcoal else InkSlate.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.moveScene(sc.id, 1) },
+                                enabled = idx < orderedScenes.lastIndex,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .testTag("scene_move_down_${sc.id}")
+                            ) {
+                                Icon(
+                                    Icons.Rounded.ArrowDownward,
+                                    contentDescription = "Move scene later",
+                                    tint = if (idx < orderedScenes.lastIndex) InkCharcoal else InkSlate.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { viewModel.duplicateScene(sc.id) },
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .testTag("scene_duplicate_${sc.id}")
+                            ) {
+                                Icon(Icons.Rounded.ContentCopy, contentDescription = "Duplicate scene", tint = StudioLavender, modifier = Modifier.size(16.dp))
+                            }
+                            IconButton(
+                                onClick = { viewModel.insertBlankSceneAfter(sc.id) },
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .testTag("scene_insert_after_${sc.id}")
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = "Insert manual cut after", tint = StudioMint, modifier = Modifier.size(17.dp))
+                            }
+                            if (orderedScenes.size > 1) {
+                                IconButton(
+                                    onClick = { viewModel.deleteScene(sc.id) },
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .testTag("scene_delete_${sc.id}")
+                                ) {
+                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete scene", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(17.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Connected Whole-Scene Workflow & Manual Fade / Merge Tools
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = StudioMintSoft.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, StudioMint.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                project.scenes.sortedBy { it.orderIndex }.forEachIndexed { idx, sc ->
-                    FilterChip(
-                        selected = sc.id == scene.id,
-                        onClick = { viewModel.selectScene(sc.id) },
-                        label = { Text("${idx + 1}. ${sc.name} (${sc.effectiveDurationMs(project.fps) / 1000f}s)") }
-                    )
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Whole Connected Scenes", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Scrub the full reel, ghost adjacent scene cuts, or merge scenes into one continuous editable timeline.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = InkSlate
+                            )
+                        }
+                        Switch(
+                            checked = state.connectedScenesMode,
+                            onCheckedChange = { viewModel.toggleConnectedScenesMode() },
+                            modifier = Modifier.testTag("planner_connected_mode_toggle")
+                        )
+                    }
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.addSceneFadeEffect(fadeIn = true, fadeOut = false) },
+                            modifier = Modifier.testTag("planner_add_fade_in_button")
+                        ) {
+                            Text("+ Fade In (0.5s)")
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.addSceneFadeEffect(fadeIn = false, fadeOut = true) },
+                            modifier = Modifier.testTag("planner_add_fade_out_button")
+                        ) {
+                            Text("+ Fade Out (0.5s)")
+                        }
+                        if (orderedScenes.indexOfFirst { it.id == scene.id } in 0 until orderedScenes.lastIndex) {
+                            OutlinedButton(
+                                onClick = { viewModel.mergeSceneWithNext(scene.id) },
+                                modifier = Modifier.testTag("planner_merge_next_button")
+                            ) {
+                                Icon(Icons.AutoMirrored.Rounded.MergeType, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Merge Next")
+                            }
+                        }
+                        if (orderedScenes.size > 1) {
+                            OutlinedButton(
+                                onClick = { viewModel.combineAllScenesIntoOne() },
+                                modifier = Modifier.testTag("planner_combine_all_scenes_button")
+                            ) {
+                                Text("Combine All (${orderedScenes.size})")
+                            }
+                        }
+                    }
                 }
             }
 
             Text("Scene Duration: ${String.format("%.1fs", durationSec)}", style = MaterialTheme.typography.labelMedium)
             Slider(value = durationSec, onValueChange = { durationSec = it }, valueRange = 1f..20f)
-
-            Text("Transition to next scene", style = MaterialTheme.typography.labelMedium)
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                SceneTransitionType.entries.forEach { tr ->
-                    FilterChip(selected = transition == tr, onClick = { transition = tr }, label = { Text(tr.label) })
-                }
-            }
 
             OutlinedTextField(
                 value = voiceover,
@@ -830,7 +1398,6 @@ fun ScenePlannerSheet(
                             musicTrackNote = music.trim(),
                             pausesAndSilenceNote = pauses.trim()
                         ),
-                        transition = scene.transitionOut.copy(type = transition),
                         notes = notes.trim()
                     )
                     onDismiss()

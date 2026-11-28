@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
@@ -36,7 +35,6 @@ import androidx.compose.material.icons.rounded.FileOpen
 import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MovieCreation
-import androidx.compose.material.icons.rounded.SportsBasketball
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -193,19 +191,11 @@ fun ProjectLibraryScreen(
                                 onDismissRequest = { showOverflowMenu = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Load Park Butterfly Sample") },
-                                    leadingIcon = { Icon(Icons.Rounded.AutoStories, contentDescription = null) },
+                                    text = { Text("Load After College 30s Reel") },
+                                    leadingIcon = { Icon(Icons.Rounded.MovieCreation, contentDescription = null) },
                                     onClick = {
                                         showOverflowMenu = false
-                                        viewModel.loadSampleButterfly(onOpenProject)
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Load 8-Cel Basketball Fixture") },
-                                    leadingIcon = { Icon(Icons.Rounded.SportsBasketball, contentDescription = null) },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        viewModel.loadBasketballRegressionFixture(onOpenProject)
+                                        viewModel.loadSampleGraduationReel(onOpenProject)
                                     }
                                 )
                             }
@@ -275,7 +265,7 @@ fun ProjectLibraryScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Your studio desk is clear", style = MaterialTheme.typography.headlineSmall)
                         Text(
-                            "Tap New Project to start sketching, or load the Park Butterfly sample from the top menu.",
+                            "Tap New Project to start sketching, or reload the After College 30s Reel from the top menu.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = InkSlate
                         )
@@ -290,6 +280,7 @@ fun ProjectLibraryScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .navigationBarsPadding()
+                        .testTag("library_projects_grid")
                 ) {
                     items(state.projects, key = { it.id }) { summary ->
                         ProjectCard(

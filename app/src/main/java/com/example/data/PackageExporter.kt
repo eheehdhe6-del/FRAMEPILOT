@@ -7,6 +7,7 @@ import com.example.domain.model.FramePilotProject
 import com.example.domain.model.Scene
 import com.example.domain.model.ShapeType
 import com.example.engine.MotionEvaluator
+import com.example.engine.RigEngine
 import com.example.engine.SpatialMapGenerator
 import com.example.engine.TimelineEngine
 import com.squareup.moshi.Types
@@ -20,6 +21,11 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
+data class ExportOptions(
+    val sketchAsDirectionOnly: Boolean = true,
+    val externalStyleGuideNote: String = ""
+)
+
 data class ExportedPackage(
     val rootFolderName: String,
     val files: Map<String, String>
@@ -27,8 +33,21 @@ data class ExportedPackage(
 
 object PackageExporter {
 
-    fun generatePackage(project: FramePilotProject): ExportedPackage {
-        val normalized = ProjectSerializer.normalizeProject(project)
+    fun generatePackage(
+        project: FramePilotProject,
+        options: ExportOptions = ExportOptions(
+            sketchAsDirectionOnly = project.exportSketchAsDirectionOnly,
+            externalStyleGuideNote = project.exportStyleGuideNote
+        )
+    ): ExportedPackage {
+        val cleanStyleNote = options.externalStyleGuideNote.trim()
+        val effectiveOptions = options.copy(externalStyleGuideNote = cleanStyleNote)
+        val normalized = ProjectSerializer.normalizeProject(
+            project.copy(
+                exportSketchAsDirectionOnly = effectiveOptions.sketchAsDirectionOnly,
+                exportStyleGuideNote = cleanStyleNote
+            )
+        )
         val safeName = normalized.name.lowercase()
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
@@ -41,31 +60,42 @@ object PackageExporter {
 
         files["project.json"] = projectJson
         files["project-schema.json"] = buildSchemaJson()
-        files["README.md"] = buildReadme(normalized)
-        files["START-HERE.md"] = buildStartHere(normalized, warnings.size)
-        files["OPENCODE-PROMPT.md"] = buildOpenCodePrompt(normalized, warnings)
+        files["README.md"] = buildReadme(normalized, effectiveOptions)
+        files["START-HERE.md"] = buildStartHere(normalized, warnings.size, effectiveOptions)
+        files["OPENCODE-PROMPT.md"] = buildOpenCodePrompt(normalized, warnings, effectiveOptions)
         files["creative-direction.md"] = buildCreativeDirection(normalized)
         files["animation-plan.md"] = buildAnimationPlan(normalized)
-        files["sketches/spatial-map.md"] = buildAllSpatialMaps(normalized)
+        files["sketches/spatial-map.md"] = buildAllSpatialMaps(normalized, effectiveOptions)
         files["frames/frames-sequence.md"] = buildAllFramesMarkdown(normalized)
         files["layers/layers-catalogue.md"] = buildLayersCatalogue(normalized)
         files["motion/motion-specs.md"] = buildMotionSpecs(normalized)
         files["accessibility/missing-info-warnings.md"] = buildWarningsMarkdown(warnings)
-        files["skills/opencode-implementation-guide.md"] = buildOpenCodeSkillGuide()
+        files["skills/opencode-implementation-guide.md"] = buildOpenCodeSkillGuide(effectiveOptions)
 
         normalized.scenes.sortedBy { it.orderIndex }.forEachIndexed { idx, scene ->
             val num = idx + 1
-            files["scenes/scene_${num}_${scene.id}.md"] = SpatialMapGenerator.generateSceneSpatialMap(normalized, scene)
+            files["scenes/scene_${num}_${scene.id}.md"] = SpatialMapGenerator.generateSceneSpatialMap(
+                project = normalized,
+                scene = scene,
+                sketchAsDirectionOnly = effectiveOptions.sketchAsDirectionOnly,
+                externalStyleGuideNote = cleanStyleNote
+            )
             files["scenes/scene_${num}_${scene.id}.json"] = ProjectSerializer.moshi.adapter(Scene::class.java).indent("  ").toJson(scene)
             files["assets/scene_${num}_${scene.id}.svg"] = buildSceneSvg(normalized, scene)
         }
 
-        files["package-manifest.json"] = buildManifestJson(normalized, files.keys.toList())
+        files["package-manifest.json"] = buildManifestJson(normalized, files.keys.toList(), effectiveOptions)
         return ExportedPackage(rootFolderName = root, files = files)
     }
 
-    fun exportToZipBytes(project: FramePilotProject): ByteArray {
-        val pkg = generatePackage(project)
+    fun exportToZipBytes(
+        project: FramePilotProject,
+        options: ExportOptions = ExportOptions(
+            sketchAsDirectionOnly = project.exportSketchAsDirectionOnly,
+            externalStyleGuideNote = project.exportStyleGuideNote
+        )
+    ): ByteArray {
+        val pkg = generatePackage(project, options)
         val baos = ByteArrayOutputStream()
         ZipOutputStream(baos).use { zos ->
             pkg.files.forEach { (relPath, content) ->
@@ -78,7 +108,7 @@ object PackageExporter {
         return baos.toByteArray()
     }
 
-    private fun buildReadme(project: FramePilotProject): String = buildString {
+    private fun buildReadme(project: FramePilotProject, options: ExportOptions): String = buildString {
         appendLine("# ${project.name} — FramePilot Production Package")
         appendLine()
         appendLine("This canonical FramePilot package contains complete geometric, structural, semantic, and timing instructions for text-only AI coding agents (such as OpenCode) and supports lossless re-import into FramePilot.")
@@ -90,6 +120,16 @@ object PackageExporter {
         appendLine("- **Frame Rate**: ${project.fps} FPS")
         appendLine("- **Scenes**: ${project.scenes.size} | **Total Duration**: ${project.totalDurationMs} ms")
         appendLine("- **Coordinate Convention**: Origin `(0, 0)` at top-left, `+X` right, `+Y` down.")
+        appendLine(
+            "- **Sketch Interpretation Mode**: " + if (options.sketchAsDirectionOnly) {
+                "Direction-Only Blueprint (rough sketches & stickman rigs specify layout, pose, and motion only; follow user's skill.md or target style for final visual craft)"
+            } else {
+                "Faithful Sketch Reconstruction (closely preserve drawn shapes, strokes, and style)"
+            }
+        )
+        if (options.sketchAsDirectionOnly && options.externalStyleGuideNote.isNotBlank()) {
+            appendLine("- **Target Style / `skill.md` Reference**: ${options.externalStyleGuideNote}")
+        }
         appendLine()
         appendLine("## Package Contents")
         appendLine("- `START-HERE.md` — Reading order for humans and AI coding agents")
@@ -106,11 +146,18 @@ object PackageExporter {
         appendLine("- `assets/*.svg` — Full vector SVG scene snapshots (shapes, smoothed strokes, poses, gradients)")
     }
 
-    private fun buildStartHere(project: FramePilotProject, warningCount: Int): String = buildString {
+    private fun buildStartHere(project: FramePilotProject, warningCount: Int, options: ExportOptions): String = buildString {
         appendLine("# START HERE — OpenCode & AI Agent Reading Order")
         appendLine()
         appendLine("You do **NOT** need vision or image-reading capabilities to see or build this animation.")
         appendLine()
+        if (options.sketchAsDirectionOnly) {
+            appendLine("> **CRITICAL ART DIRECTION RULE (SKETCH = DIRECTION ONLY)**: The simplicity or roughness of the drawings and stickman figures in this export must **NOT** equal the visual quality of your output. Treat every rough stroke, basic shape, and stickman rig strictly as spatial layout, pose, scale, and motion direction. If the user supplied a `skill.md` or style guide, **follow that `skill.md` / target style**—not the raw stickman/sketch style.")
+            if (options.externalStyleGuideNote.isNotBlank()) {
+                appendLine("> **Target Style / `skill.md` Note**: ${options.externalStyleGuideNote}")
+            }
+            appendLine()
+        }
         appendLine("1. Read `OPENCODE-PROMPT.md` for the self-contained 2D Visual ASCII Canvas Render, palette, exact geometry, stroke traces, poses, cels, and motion plan.")
         appendLine("2. Inspect `creative-direction.md` for Reel timing, voiceover, captions, and audio cues.")
         appendLine("3. Read `sketches/spatial-map.md` for full per-scene visual renders, depth order, and polyline geometry.")
@@ -122,10 +169,25 @@ object PackageExporter {
 
     private fun buildOpenCodePrompt(
         project: FramePilotProject,
-        warnings: List<com.example.engine.MissingInfoWarning>
+        warnings: List<com.example.engine.MissingInfoWarning>,
+        options: ExportOptions
     ): String = buildString {
         appendLine("# OpenCode Production Prompt — ${project.name}")
         appendLine()
+        if (options.sketchAsDirectionOnly) {
+            appendLine("## IMPORTANT: Sketch Fidelity ≠ Final Output Style (Direction Only)")
+            appendLine("> **READ FIRST — DO NOT COPY ROUGH SKETCH OR STICKMAN STYLE**:")
+            appendLine("> - **Directional Blueprint Only**: Every rough freehand stroke, crude shape, and 2D stickman figure below is **strictly a spatial layout, character pose/blocking, relative proportion, and motion direction**—**NOT** the target visual style or final rendering quality.")
+            appendLine("> - **Never Downgrade Output to Match Sketch Simplicity**: Even if the sketch looks simple, wobbly, ugly, or stickman-like, do **NOT** render crude stick figures or rough placeholder art as the final output (unless explicitly requested).")
+            appendLine("> - **Follow External `skill.md` & Style Specs**: If the user provided a `skill.md`, design system, or visual style instructions alongside this export, **strictly follow that `skill.md` / style guide** for characters, backgrounds, shading, typography, and polish—using the FramePilot coordinates, poses, and motion tracks purely as the blueprint for *placement*, *pose*, and *movement*.")
+            if (options.externalStyleGuideNote.isNotBlank()) {
+                appendLine("> - **Creator Style / `skill.md` Directive**: ${options.externalStyleGuideNote}")
+            }
+            appendLine()
+        } else {
+            appendLine("> **Visual Mode — Faithful Sketch Reconstruction**: Closely preserve the drawn shapes, strokes, proportions, and visual style captured below.")
+            appendLine()
+        }
         appendLine("> **Zero-Vision Complete Visual Specification**: This self-contained prompt gives text-only AI models (including OpenCode) exact sight of everything drawn on the canvas using an aspect-accurate 2D Visual ASCII Canvas Render, extracted color palette, geometric shape classifications, simplified polyline coordinates, vector shapes, 2D skeleton joints, frame-by-frame cels, and motion/camera specs.")
         appendLine()
         appendLine("- **Target Format**: ${project.canvasWidth}×${project.canvasHeight} (${project.aspectRatioLabel}) at ${project.fps} FPS")
@@ -152,12 +214,16 @@ object PackageExporter {
             appendLine()
 
             appendLine("### 2D Visual Canvas Render (What the Creator Sees)")
+            if (options.sketchAsDirectionOnly) {
+                appendLine("_Compositional & pose direction only: use these positions, proportions, and silhouettes as blocking while rendering final visuals in your target `skill.md` / production style, not raw stickman or rough-sketch quality._")
+            }
             appendLine("```text")
             appendLine(SpatialMapGenerator.buildVisualAsciiCanvas(project.canvasWidth, project.canvasHeight, orderedLayers, firstFrame))
             appendLine("```")
             appendLine()
 
             appendLine("### Layers & Exact Visual Geometry (Back-to-Front Z-Order)")
+            val firstFramePoses = RigEngine.buildActivePosesByLayer(scene, firstFrame)
             if (orderedLayers.isEmpty()) {
                 appendLine("_No layers in scene._")
                 appendLine()
@@ -169,7 +235,8 @@ object PackageExporter {
                         orderedLayers = orderedLayers,
                         zIdx = zIdx,
                         layer = layer,
-                        maxPolylinePts = 12
+                        maxPolylinePts = 12,
+                        activePosesByLayer = firstFramePoses
                     )
                 }
             }
@@ -307,7 +374,7 @@ object PackageExporter {
             val dur = scene.effectiveDurationMs(project.fps)
             appendLine("## Scene ${idx + 1}: ${scene.name} (`${cursorMs}ms .. ${cursorMs + dur}ms`)")
             cursorMs += dur
-            appendLine("- **Transition Out**: ${scene.transitionOut.type.label} (${scene.transitionOut.durationMs}ms)")
+            appendLine("- **Transition Out**: Hard Cut (0ms)")
             appendLine("- **Background Environment**: ${scene.background.environmentDescription.ifBlank { "unlabelled" }}")
             appendLine("- **Camera Direction**: ${scene.cameraTrack.directionSummary.ifBlank { "Static camera" }}")
             appendLine("- **Voiceover**: ${scene.audioPlan.voiceoverText.ifBlank { "(none)" }}")
@@ -344,9 +411,16 @@ object PackageExporter {
         }
     }
 
-    private fun buildAllSpatialMaps(project: FramePilotProject): String = buildString {
+    private fun buildAllSpatialMaps(project: FramePilotProject, options: ExportOptions): String = buildString {
         project.scenes.sortedBy { it.orderIndex }.forEach { scene ->
-            appendLine(SpatialMapGenerator.generateSceneSpatialMap(project, scene))
+            appendLine(
+                SpatialMapGenerator.generateSceneSpatialMap(
+                    project = project,
+                    scene = scene,
+                    sketchAsDirectionOnly = options.sketchAsDirectionOnly,
+                    externalStyleGuideNote = options.externalStyleGuideNote
+                )
+            )
             appendLine("---")
             appendLine()
         }
@@ -467,9 +541,13 @@ object PackageExporter {
             appendLine("""  <rect width="$w" height="$h" fill="${scene.background.primaryColorHex}" />""")
         }
         val firstFrame = TimelineEngine.normalizeOrder(scene.frames).firstOrNull()
+        val activePosesByLayer = RigEngine.buildActivePosesByLayer(scene, firstFrame)
         scene.orderedLayers().filter { it.visible }.forEach { layer ->
             appendLine("""  <g id="${layer.id}" opacity="${layer.opacity}">""")
-            val allShapes = layer.sceneShapes + firstFrame?.layerShapes?.get(layer.id).orEmpty()
+            val allShapes = (layer.sceneShapes + firstFrame?.layerShapes?.get(layer.id).orEmpty()).map { sh ->
+                val targetPose = RigEngine.resolveTargetPose(sh.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformShape(sh, targetPose)
+            }
             allShapes.forEach { s ->
                 val fill = if (s.filled) (s.fillColorHex ?: s.strokeColorHex) else "none"
                 val cx = s.x + s.width / 2f
@@ -508,7 +586,10 @@ object PackageExporter {
                     }
                 }
             }
-            val strokes = layer.sceneStrokes + firstFrame?.layerDrawings?.get(layer.id).orEmpty()
+            val strokes = (layer.sceneStrokes + firstFrame?.layerDrawings?.get(layer.id).orEmpty()).map { st ->
+                val targetPose = RigEngine.resolveTargetPose(st.rigAttachment, layer.id, activePosesByLayer)
+                RigEngine.deformStroke(st, targetPose, w, h)
+            }
             strokes.forEach { st ->
                 if (st.points.isNotEmpty()) {
                     val widthMult = when (st.tool) {
@@ -543,7 +624,7 @@ object PackageExporter {
                     }
                 }
             }
-            val activePose = firstFrame?.layerPoses?.get(layer.id) ?: layer.skeletonPose
+            val activePose = activePosesByLayer[layer.id]
             if (activePose != null) {
                 appendLine("""    <g class="skeleton-pose" data-pose-name="${activePose.name}">""")
                 svgPoseBones.forEach { (a, b) ->
@@ -558,7 +639,11 @@ object PackageExporter {
                 }
                 appendLine("""    </g>""")
             }
-            layer.sceneTexts.forEach { t ->
+            layer.sceneTexts.forEach { rawT ->
+                val t = RigEngine.deformText(
+                    rawT,
+                    RigEngine.resolveTargetPose(rawT.rigAttachment, layer.id, activePosesByLayer)
+                )
                 val escaped = t.text
                     .replace("&", "&amp;")
                     .replace("<", "&lt;")
@@ -572,7 +657,7 @@ object PackageExporter {
         appendLine("</svg>")
     }
 
-    private fun buildOpenCodeSkillGuide(): String = buildString {
+    private fun buildOpenCodeSkillGuide(options: ExportOptions): String = buildString {
         appendLine("# OpenCode Implementation Guide for FramePilot Packages")
         appendLine()
         appendLine("1. Parse `project.json` as the single source of truth.")
@@ -580,6 +665,12 @@ object PackageExporter {
         appendLine("3. Use top-left `(0, 0)` coordinates with `+X` right and `+Y` down.")
         appendLine("4. Advance frame-by-frame drawings chronologically by `frames[i].orderIndex`, holding each cel for `exposureFrames / fps` seconds.")
         appendLine("5. Evaluate `motionTracks` and `cameraTrack` on the same millisecond timebase (`0..effectiveDurationMs`).")
+        if (options.sketchAsDirectionOnly) {
+            appendLine("6. **Sketch Simplicity ≠ Output Visual Style**: Never copy rough sketch strokes or stick-figure simplicity into final rendered assets. Treat drawings and 2D stickman skeletons strictly as layout, pose, proportion, and motion direction, and follow the user's `skill.md` or production style guide instead.")
+            if (options.externalStyleGuideNote.isNotBlank()) {
+                appendLine("7. **Target Style / `skill.md` Directive**: ${options.externalStyleGuideNote}")
+            }
+        }
     }
 
     private val anyMapAdapter = ProjectSerializer.moshi.adapter<Map<String, Any>>(
@@ -597,7 +688,7 @@ object PackageExporter {
         return anyMapAdapter.toJson(map)
     }
 
-    private fun buildManifestJson(project: FramePilotProject, fileList: List<String>): String {
+    private fun buildManifestJson(project: FramePilotProject, fileList: List<String>, options: ExportOptions): String {
         val map = linkedMapOf<String, Any>(
             "format" to "framepilot-canonical-package",
             "schemaVersion" to CURRENT_SCHEMA_VERSION,
@@ -605,6 +696,8 @@ object PackageExporter {
             "projectName" to project.name,
             "fps" to project.fps,
             "sceneCount" to project.scenes.size,
+            "sketchAsDirectionOnly" to options.sketchAsDirectionOnly,
+            "externalStyleGuideNote" to options.externalStyleGuideNote,
             "files" to fileList
         )
         return anyMapAdapter.toJson(map)

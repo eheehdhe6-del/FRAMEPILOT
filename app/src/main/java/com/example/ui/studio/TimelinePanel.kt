@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Flip
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Loop
@@ -39,8 +40,10 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material.icons.rounded.ViewCarousel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,18 +122,21 @@ fun TimelinePanel(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     IconButton(
                         onClick = { viewModel.stepFrame(-1) },
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(36.dp)
                             .testTag("timeline_prev_frame")
                     ) {
                         Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous frame", tint = InkCharcoal)
@@ -140,7 +146,7 @@ fun TimelinePanel(
                         shape = CircleShape,
                         color = if (state.isPlaying) StudioLavender else StudioCoral,
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(38.dp)
                             .clickable { viewModel.togglePlayPause() }
                             .testTag("timeline_play_pause")
                     ) {
@@ -154,36 +160,70 @@ fun TimelinePanel(
                     }
 
                     IconButton(
+                        onClick = { viewModel.stopPlayback() },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("timeline_stop")
+                    ) {
+                        Icon(Icons.Rounded.Stop, contentDescription = "Stop playback", tint = InkCharcoal, modifier = Modifier.size(19.dp))
+                    }
+
+                    IconButton(
                         onClick = { viewModel.stepFrame(1) },
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(36.dp)
                             .testTag("timeline_next_frame")
                     ) {
                         Icon(Icons.Rounded.SkipNext, contentDescription = "Next frame", tint = InkCharcoal)
                     }
 
                     IconButton(
+                        onClick = { viewModel.toggleReversePlayback() },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("timeline_reverse_toggle")
+                    ) {
+                        Icon(
+                            Icons.Rounded.FastRewind,
+                            contentDescription = "Reverse playback",
+                            tint = if (state.reversePlayback) StudioCoral else InkSlate,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    IconButton(
                         onClick = { viewModel.toggleLoop() },
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("timeline_loop_toggle")
                     ) {
                         Icon(
                             Icons.Rounded.Loop,
                             contentDescription = "Loop playback",
                             tint = if (state.loopPlayback) StudioMint else InkSlate,
-                            modifier = Modifier.size(19.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    val totalSec = scene.effectiveDurationMs(project.fps) / 1000f
-                    val curSec = state.playheadTimeMs / 1000f
+                    val displayText = if (state.connectedScenesMode) {
+                        val curGlobal = state.globalPlayheadTimeMs() / 1000f
+                        val totGlobal = state.totalReelDurationMs() / 1000f
+                        String.format("%.1fs/%.1fs", curGlobal, totGlobal)
+                    } else if (state.isPlaying || showTracksTab) {
+                        val totalSec = scene.effectiveDurationMs(project.fps) / 1000f
+                        val curSec = state.playheadTimeMs / 1000f
+                        String.format("%.1fs/%.1fs", curSec, totalSec)
+                    } else {
+                        "F${selectedIdx + 1}/${orderedFrames.size}"
+                    }
                     Text(
-                        if (state.isPlaying || showTracksTab)
-                            String.format("%.1fs / %.1fs", curSec, totalSec)
-                        else
-                            "Frame ${selectedIdx + 1}/${orderedFrames.size}",
+                        displayText,
                         style = MaterialTheme.typography.labelSmall,
                         color = InkCharcoal,
-                        modifier = Modifier.padding(start = 4.dp)
+                        maxLines = 1,
+                        modifier = Modifier
+                            .padding(start = 2.dp, end = 4.dp)
+                            .testTag("timeline_status_label")
                     )
                 }
 
@@ -191,6 +231,35 @@ fun TimelinePanel(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    // Toggle Single Scene vs Connected Whole Reel editing
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (state.connectedScenesMode) StudioMintSoft else PaperLinen,
+                        border = if (state.connectedScenesMode) BorderStroke(1.dp, StudioMint.copy(alpha = 0.5f)) else null,
+                        modifier = Modifier
+                            .clickable { viewModel.toggleConnectedScenesMode() }
+                            .testTag("timeline_connected_mode_toggle")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.ViewCarousel,
+                                contentDescription = "Whole Reel connected mode",
+                                tint = if (state.connectedScenesMode) StudioMint else InkSlate,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                if (state.connectedScenesMode) "Reel" else "Scene",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (state.connectedScenesMode) StudioMint else InkSlate
+                            )
+                        }
+                    }
+
                     // Toggle between Frames & Unified Tracks
                     Surface(
                         shape = RoundedCornerShape(10.dp),
@@ -204,25 +273,26 @@ fun TimelinePanel(
                     ) {
                         Text(
                             if (showTracksTab) "Tracks" else "Frames",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (showTracksTab) StudioLavender else StudioCoral,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                         )
                     }
 
                     IconButton(
                         onClick = { viewModel.openSheet(StudioSheet.LAYERS) },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(34.dp)
                             .testTag("timeline_layers_button")
                     ) {
-                        Icon(Icons.Rounded.Layers, contentDescription = "Layers", tint = StudioSky)
+                        Icon(Icons.Rounded.Layers, contentDescription = "Layers", tint = StudioSky, modifier = Modifier.size(19.dp))
                     }
 
                     IconButton(
                         onClick = { viewModel.toggleTimelineExpanded() },
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(34.dp)
                             .testTag("timeline_collapse_toggle")
                     ) {
                         Icon(
@@ -240,15 +310,18 @@ fun TimelinePanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(PaperCream)
-                        .padding(bottom = 8.dp)
+                        .padding(bottom = 4.dp)
                 ) {
+                    if (state.connectedScenesMode) {
+                        ConnectedReelSequenceBar(state = state, viewModel = viewModel)
+                    }
                     if (!showTracksTab) {
                         // Frame Operations Strip
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 12.dp, vertical = 4.dp),
+                                .padding(horizontal = 10.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -373,7 +446,7 @@ fun TimelinePanel(
 
                         // Chronological Frame Thumbnail Strip (Left -> Right: 1, 2, 3...)
                         LazyRow(
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -485,12 +558,12 @@ private fun FrameThumbnailCard(
 ) {
     val textMeasurer = rememberTextMeasurer()
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = PaperSheet,
         border = BorderStroke(if (isSelected) 2.5.dp else 1.dp, if (isSelected) StudioCoral else PaperBorder),
         shadowElevation = if (isSelected) 3.dp else 0.dp,
         modifier = Modifier
-            .size(width = 74.dp, height = 84.dp)
+            .size(width = 66.dp, height = 74.dp)
             .clickable(onClick = onClick)
             .testTag("frame_card_$visibleNumber")
     ) {
@@ -690,3 +763,137 @@ private fun TrackLanePill(
         }
     }
 }
+
+@Composable
+private fun ConnectedReelSequenceBar(
+    state: StudioUiState,
+    viewModel: StudioViewModel
+) {
+    val project = state.project ?: return
+    val activeScene = state.activeScene ?: return
+    val orderedScenes = state.orderedScenes()
+    val activeIdx = orderedScenes.indexOfFirst { it.id == activeScene.id }.coerceAtLeast(0)
+    val totalGlobalMs = state.totalReelDurationMs().coerceAtLeast(500L)
+    val curGlobalMs = state.globalPlayheadTimeMs().coerceIn(0L, totalGlobalMs)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(StudioMintSoft.copy(alpha = 0.45f))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .testTag("connected_reel_sequence_bar"),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                "Reel",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = StudioMint
+            )
+            Slider(
+                value = curGlobalMs.toFloat(),
+                onValueChange = { viewModel.seekGlobalTimeMs(it.toLong()) },
+                valueRange = 0f..totalGlobalMs.toFloat(),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(24.dp)
+                    .testTag("timeline_global_reel_slider")
+            )
+            Text(
+                "${String.format("%.1fs", curGlobalMs / 1000f)}/${String.format("%.1fs", totalGlobalMs / 1000f)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = InkCharcoal
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            orderedScenes.forEachIndexed { idx, sc ->
+                val isSelected = sc.id == activeScene.id
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) StudioCoralSoft else PaperSheet,
+                    border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) StudioCoral else PaperBorder),
+                    modifier = Modifier
+                        .clickable { viewModel.selectScene(sc.id) }
+                        .testTag("timeline_connected_scene_${sc.id}")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            "${idx + 1}. ${sc.name}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) StudioCoral else InkCharcoal
+                        )
+                        if (isSelected && orderedScenes.size > 1) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                                contentDescription = "Move scene earlier",
+                                tint = if (activeIdx > 0) InkCharcoal else InkSlate.copy(alpha = 0.3f),
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clickable(enabled = activeIdx > 0) {
+                                        viewModel.moveScene(sc.id, -1)
+                                    }
+                                    .testTag("timeline_scene_swap_left")
+                            )
+                            Icon(
+                                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = "Move scene later",
+                                tint = if (activeIdx < orderedScenes.lastIndex) InkCharcoal else InkSlate.copy(alpha = 0.3f),
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clickable(enabled = activeIdx < orderedScenes.lastIndex) {
+                                        viewModel.moveScene(sc.id, 1)
+                                    }
+                                    .testTag("timeline_scene_swap_right")
+                            )
+                        }
+                    }
+                }
+            }
+
+            TimelineActionChip(
+                label = "+ Cut",
+                icon = Icons.Rounded.Add,
+                containerColor = PaperSheet,
+                contentColor = StudioCoral,
+                testTag = "timeline_insert_cut_scene",
+                onClick = { viewModel.insertBlankSceneAfter(activeScene.id) }
+            )
+            TimelineActionChip(
+                label = "Fade",
+                icon = Icons.Rounded.Flip,
+                containerColor = StudioLavenderSoft,
+                contentColor = StudioLavender,
+                testTag = "timeline_add_fade_button",
+                onClick = { viewModel.addSceneFadeEffect(fadeIn = true, fadeOut = true) }
+            )
+            if (orderedScenes.size > 1) {
+                TimelineActionChip(
+                    label = "Merge All",
+                    icon = Icons.Rounded.SwapHoriz,
+                    containerColor = StudioButterSoft,
+                    contentColor = InkCharcoal,
+                    testTag = "timeline_merge_all_button",
+                    onClick = { viewModel.combineAllScenesIntoOne() }
+                )
+            }
+        }
+    }
+}
+

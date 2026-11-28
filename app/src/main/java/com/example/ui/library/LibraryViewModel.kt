@@ -87,21 +87,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun loadSampleButterfly(onReady: (String) -> Unit) {
+    fun loadSampleGraduationReel(onReady: (String) -> Unit) {
         viewModelScope.launch {
-            val sample = SampleProjects.createParkButterflySample()
+            val sample = SampleProjects.createAfterGraduationReelSample()
             store.saveProject(sample)
             refresh()
             onReady(sample.id)
-        }
-    }
-
-    fun loadBasketballRegressionFixture(onReady: (String) -> Unit) {
-        viewModelScope.launch {
-            val fixture = SampleProjects.createEightCelBasketballRegressionFixture()
-            store.saveProject(fixture)
-            refresh()
-            onReady(fixture.id)
         }
     }
 

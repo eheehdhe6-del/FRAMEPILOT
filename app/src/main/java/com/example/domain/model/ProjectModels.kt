@@ -134,7 +134,9 @@ data class FramePilotProject(
     val fps: Int = 24,
     val scenes: List<Scene> = emptyList(),
     val creativeBrief: String = "",
-    val tutorialCompleted: Boolean = false
+    val tutorialCompleted: Boolean = false,
+    val exportSketchAsDirectionOnly: Boolean = true,
+    val exportStyleGuideNote: String = ""
 ) {
     val totalDurationMs: Long
         get() = scenes.sumOf { it.effectiveDurationMs(fps) }
@@ -203,6 +205,26 @@ data class SemanticInfo(
 }
 
 @JsonClass(generateAdapter = true)
+data class RigAttachment(
+    val rigLayerId: String? = null,
+    val primaryJoint: String,
+    val secondaryJoint: String? = null,
+    val refPrimaryX: Float,
+    val refPrimaryY: Float,
+    val refSecondaryX: Float = 0f,
+    val refSecondaryY: Float = 0f,
+    val refRigScale: Float = 1f,
+    val isRigidProp: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class ElementGroup(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "Group",
+    val rigAttachment: RigAttachment? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class Layer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -215,7 +237,8 @@ data class Layer(
     val sceneStrokes: List<DrawingStroke> = emptyList(),
     val sceneShapes: List<SceneShape> = emptyList(),
     val sceneTexts: List<SceneText> = emptyList(),
-    val skeletonPose: SkeletonPose? = null
+    val skeletonPose: SkeletonPose? = null,
+    val groups: List<ElementGroup> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
@@ -239,7 +262,9 @@ data class DrawingStroke(
     val points: List<StrokePoint> = emptyList(),
     val semanticLabel: String? = null,
     val isFilledLoop: Boolean = false,
-    val fillColorHex: String? = null
+    val fillColorHex: String? = null,
+    val groupId: String? = null,
+    val rigAttachment: RigAttachment? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -257,7 +282,9 @@ data class SceneShape(
     val strokeWidth: Float = 6f,
     val opacity: Float = 1f,
     val filled: Boolean = false,
-    val semantic: SemanticInfo = SemanticInfo()
+    val semantic: SemanticInfo = SemanticInfo(),
+    val groupId: String? = null,
+    val rigAttachment: RigAttachment? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -272,7 +299,9 @@ data class SceneText(
     val rotationDeg: Float = 0f,
     val opacity: Float = 1f,
     val animationStyle: TextAnimationStyle = TextAnimationStyle.NONE,
-    val semantic: SemanticInfo = SemanticInfo()
+    val semantic: SemanticInfo = SemanticInfo(),
+    val groupId: String? = null,
+    val rigAttachment: RigAttachment? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -433,5 +462,5 @@ data class AudioPlan(
 @JsonClass(generateAdapter = true)
 data class SceneTransition(
     val type: SceneTransitionType = SceneTransitionType.CUT,
-    val durationMs: Long = 350L
+    val durationMs: Long = 0L
 )

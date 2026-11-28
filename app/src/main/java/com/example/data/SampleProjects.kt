@@ -94,6 +94,8 @@ object SampleProjects {
         )
     }
 
+    fun createAfterGraduationReelSample(): FramePilotProject = SampleReelGraduation.create()
+
     /**
      * Rich sample Reel project demonstrating:
      * - Layered park background (sky gradient, mountains, trees, ground)
@@ -479,7 +481,7 @@ object SampleProjects {
                 musicTrackNote = "Warm upbeat acoustic ukulele lo-fi loop (95 BPM)",
                 pausesAndSilenceNote = "0.4s breath before voiceover starts"
             ),
-            transitionOut = SceneTransition(type = SceneTransitionType.CROSSFADE, durationMs = 350L),
+            transitionOut = SceneTransition(type = SceneTransitionType.CUT, durationMs = 0L),
             notes = "Sample Reel scene ready for OpenCode text-only export"
         )
 

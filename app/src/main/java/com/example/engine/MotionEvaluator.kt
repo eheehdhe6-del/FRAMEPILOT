@@ -34,7 +34,10 @@ data class EvaluatedParticle(
     val x: Float,
     val y: Float,
     val radius: Float,
-    val alpha: Float
+    val alpha: Float,
+    val vx: Float = 0f,
+    val vy: Float = 0f,
+    val isLeaf: Boolean = false
 )
 
 data class EvaluatedCamera(
@@ -199,8 +202,8 @@ object MotionEvaluator {
                 offsetY += cos(rawProgress * freq * 1.3f * PI.toFloat()) * 10f * (1f - rawProgress * 0.5f)
             }
             MotionActionType.FLOAT -> {
-                offsetY += sin(rawProgress * 2f * PI.toFloat()) * 26f
-                rotationDeg += sin(rawProgress * 2f * PI.toFloat()) * 4f
+                offsetY += sin(rawProgress * 2f * PI.toFloat()) * 12f
+                rotationDeg += sin(rawProgress * 2f * PI.toFloat()) * 1.2f
             }
             MotionActionType.ATTACH -> {
                 val parentCenter = track.parentTargetId?.let { targetCenters[it] }
@@ -229,17 +232,80 @@ object MotionEvaluator {
             MotionActionType.PARTICLES -> {
                 val cfg = track.particleConfig
                 if (cfg != null) {
-                    val list = (0 until cfg.count.coerceIn(1, 60)).map { idx ->
-                        val angle = (idx.toFloat() / cfg.count.toFloat()) * 2f * PI.toFloat() + idx * 0.37f
-                        val dist = eased * cfg.spreadRadius * (0.5f + ((idx % 5) * 0.14f))
-                        val px = cfg.originX + cos(angle) * dist
-                        val py = cfg.originY + sin(angle) * dist + cfg.gravity * eased * eased * 240f
-                        EvaluatedParticle(
-                            x = px,
-                            y = py,
-                            radius = (10f - idx % 4 * 1.5f) * (1f - eased * 0.5f),
-                            alpha = (1f - eased).coerceIn(0f, 1f)
-                        )
+                    val styleLower = cfg.style.lowercase()
+                    val count = cfg.count.coerceIn(1, 70)
+                    val list = when {
+                        styleLower.contains("rain") -> {
+                            (0 until count).map { idx ->
+                                val seedX = ((idx * 173 + 37) % 1000) / 1000f
+                                val seedPhase = ((idx * 293 + 71) % 1000) / 1000f
+                                val life = (rawProgress * 3.8f + seedPhase) % 1f
+                                val spanW = (cfg.spreadRadius * 2f).coerceAtLeast(canvasWidth * 0.9f)
+                                val spanH = canvasHeight * 0.72f
+                                val px = (cfg.originX - spanW * 0.5f) + seedX * spanW - life * 110f
+                                val py = (cfg.originY - 120f) + life * spanH
+                                val edgeAlpha = sin(life * PI.toFloat()).coerceIn(0f, 1f) * 0.78f
+                                EvaluatedParticle(
+                                    x = px,
+                                    y = py,
+                                    radius = 2.6f + (idx % 2) * 0.8f,
+                                    alpha = edgeAlpha,
+                                    vx = -11f,
+                                    vy = 44f
+                                )
+                            }
+                        }
+                        styleLower.contains("leaf") || styleLower.contains("leaves") || styleLower.contains("autumn") -> {
+                            (0 until count).map { idx ->
+                                val seedX = ((idx * 197 + 53) % 1000) / 1000f
+                                val seedPhase = ((idx * 317 + 19) % 1000) / 1000f
+                                val life = (rawProgress * 1.35f + seedPhase) % 1f
+                                val spanW = (cfg.spreadRadius * 2f).coerceAtLeast(canvasWidth * 0.85f)
+                                val sway = sin(life * 4f * PI.toFloat() + idx) * 28f
+                                val px = (cfg.originX - spanW * 0.5f) + seedX * spanW + sway + life * 90f
+                                val py = (cfg.originY - 180f) + life * (canvasHeight * 0.65f)
+                                val edgeAlpha = sin(life * PI.toFloat()).coerceIn(0f, 1f) * 0.88f
+                                EvaluatedParticle(
+                                    x = px,
+                                    y = py,
+                                    radius = 7f + (idx % 3) * 2f,
+                                    alpha = edgeAlpha,
+                                    isLeaf = true
+                                )
+                            }
+                        }
+                        styleLower.contains("dust") || styleLower.contains("ember") || styleLower.contains("mote") -> {
+                            (0 until count).map { idx ->
+                                val seedX = ((idx * 211 + 89) % 1000) / 1000f
+                                val seedPhase = ((idx * 373 + 41) % 1000) / 1000f
+                                val life = (rawProgress * 1.25f + seedPhase) % 1f
+                                val spanW = (cfg.spreadRadius * 2f).coerceAtLeast(canvasWidth * 0.8f)
+                                val driftX = sin(life * 2f * PI.toFloat() + idx) * 22f
+                                val px = (cfg.originX - spanW * 0.5f) + seedX * spanW + driftX
+                                val py = (cfg.originY + 220f) - life * 480f
+                                val edgeAlpha = sin(life * PI.toFloat()).coerceIn(0f, 1f) * 0.82f
+                                EvaluatedParticle(
+                                    x = px,
+                                    y = py,
+                                    radius = 4.5f + (idx % 3) * 1.8f,
+                                    alpha = edgeAlpha
+                                )
+                            }
+                        }
+                        else -> {
+                            (0 until count).map { idx ->
+                                val angle = (idx.toFloat() / count.toFloat()) * 2f * PI.toFloat() + idx * 0.37f
+                                val dist = eased * cfg.spreadRadius * (0.5f + ((idx % 5) * 0.14f))
+                                val px = cfg.originX + cos(angle) * dist
+                                val py = cfg.originY + sin(angle) * dist + cfg.gravity * eased * eased * 240f
+                                EvaluatedParticle(
+                                    x = px,
+                                    y = py,
+                                    radius = (8.5f - idx % 4 * 1.2f) * (1f - eased * 0.4f),
+                                    alpha = sin(eased * PI.toFloat()).coerceIn(0f, 1f).takeIf { rawProgress > 0.02f } ?: 0.85f
+                                )
+                            }
+                        }
                     }
                     return EvaluatedMotion(particles = list)
                 }

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircleOutline
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Download
@@ -42,10 +44,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,11 +76,11 @@ import com.example.ui.theme.InkSlate
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.PaperBorder
 import com.example.ui.theme.PaperCream
-import com.example.ui.theme.PaperLinen
 import com.example.ui.theme.PaperSheet
 import com.example.ui.theme.StudioButterSoft
 import com.example.ui.theme.StudioCoral
 import com.example.ui.theme.StudioLavender
+import com.example.ui.theme.StudioLavenderSoft
 import com.example.ui.theme.StudioMint
 import com.example.ui.theme.StudioMintSoft
 import kotlinx.coroutines.Dispatchers
@@ -93,9 +100,11 @@ fun ExportPreviewScreen(
 
     val uiState by exportViewModel.uiState.collectAsStateWithLifecycle()
     var selectedFile by remember { mutableStateOf("OPENCODE-PROMPT.md") }
+    var showStyleNoteField by remember { mutableStateOf(false) }
 
     LaunchedEffect(projectId) {
         selectedFile = "OPENCODE-PROMPT.md"
+        showStyleNoteField = false
         exportViewModel.loadProject(projectId)
     }
 
@@ -105,7 +114,9 @@ fun ExportPreviewScreen(
         val p = uiState.project ?: return@rememberLauncherForActivityResult
         if (uri != null) {
             scope.launch {
-                val bytes = withContext(Dispatchers.Default) { PackageExporter.exportToZipBytes(p) }
+                val bytes = withContext(Dispatchers.Default) {
+                    PackageExporter.exportToZipBytes(p, uiState.exportOptions)
+                }
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                 }
@@ -184,22 +195,23 @@ fun ExportPreviewScreen(
 
             // Readiness Banner
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = if (warningCount == 0) StudioMintSoft else StudioButterSoft,
                 border = BorderStroke(1.dp, PaperBorder),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
             ) {
                 Row(
-                    modifier = Modifier.padding(12.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
                         if (warningCount == 0) Icons.Rounded.CheckCircleOutline else Icons.Rounded.WarningAmber,
                         contentDescription = null,
-                        tint = if (warningCount == 0) StudioMint else InkCharcoal
+                        tint = if (warningCount == 0) StudioMint else InkCharcoal,
+                        modifier = Modifier.size(18.dp)
                     )
                     Text(
                         if (warningCount == 0)
@@ -211,6 +223,122 @@ fun ExportPreviewScreen(
                     )
                 }
             }
+
+            // Sketch = Direction Only Option (Pre-Export Control)
+            val options = uiState.exportOptions
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (options.sketchAsDirectionOnly) StudioLavenderSoft else PaperSheet,
+                border = BorderStroke(
+                    1.dp,
+                    if (options.sketchAsDirectionOnly) StudioLavender.copy(alpha = 0.45f) else PaperBorder
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .testTag("export_direction_only_card")
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.AutoAwesome,
+                            contentDescription = null,
+                            tint = if (options.sketchAsDirectionOnly) StudioLavender else InkSlate,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Sketch = Direction Only",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = InkCharcoal
+                            )
+                            Text(
+                                if (options.sketchAsDirectionOnly) {
+                                    "Tells OpenCode not to copy rough/stickman art — follow your skill.md or target style instead."
+                                } else {
+                                    "Literal mode: OpenCode reproduces your drawn sketch style closely."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = InkSlate
+                            )
+                            if (options.sketchAsDirectionOnly) {
+                                Text(
+                                    text = when {
+                                        showStyleNoteField -> "Hide skill.md / target style note"
+                                        options.externalStyleGuideNote.isNotBlank() ->
+                                            "Style: ${options.externalStyleGuideNote} (tap to edit)"
+                                        else -> "+ Specify skill.md / target style (optional)"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = StudioLavender,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .padding(top = 3.dp)
+                                        .clickable { showStyleNoteField = !showStyleNoteField }
+                                        .testTag("export_style_note_toggle")
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Switch(
+                            checked = options.sketchAsDirectionOnly,
+                            onCheckedChange = { exportViewModel.setSketchAsDirectionOnly(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = PaperSheet,
+                                checkedTrackColor = StudioLavender
+                            ),
+                            modifier = Modifier.testTag("export_direction_only_switch")
+                        )
+                    }
+
+                    AnimatedVisibility(visible = options.sketchAsDirectionOnly && showStyleNoteField) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf(
+                                    "Follow my skill.md",
+                                    "Polished 2D Vector",
+                                    "Clean Anime / Cel"
+                                ).forEach { preset ->
+                                    SuggestionChip(
+                                        onClick = { exportViewModel.setExternalStyleGuideNote(preset) },
+                                        label = { Text(preset, style = MaterialTheme.typography.labelSmall) }
+                                    )
+                                }
+                            }
+                            OutlinedTextField(
+                                value = options.externalStyleGuideNote,
+                                onValueChange = { exportViewModel.setExternalStyleGuideNote(it) },
+                                label = { Text("Target style or skill.md instruction") },
+                                placeholder = { Text("e.g. Follow skill.md (no stickman style)") },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("export_style_note_input")
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
 
             // Action Buttons
             Row(
@@ -252,7 +380,9 @@ fun ExportPreviewScreen(
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            val bytes = withContext(Dispatchers.Default) { PackageExporter.exportToZipBytes(proj) }
+                            val bytes = withContext(Dispatchers.Default) {
+                                PackageExporter.exportToZipBytes(proj, uiState.exportOptions)
+                            }
                             val exportsDir = File(context.cacheDir, "exports").apply { mkdirs() }
                             val zipFile = File(exportsDir, "${pkg.rootFolderName}.zip")
                             withContext(Dispatchers.IO) { zipFile.writeBytes(bytes) }
